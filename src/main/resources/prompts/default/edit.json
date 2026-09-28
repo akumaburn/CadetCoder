@@ -1,0 +1,18 @@
+{
+  "name": "edit",
+  "version": "2.0",
+  "description": "AI-powered code editor with precise SEARCH/REPLACE operations",
+  "content_path": "content/edit.md",
+  "variables": [
+    {
+      "name": "file_context",
+      "description": "Context about the files being edited",
+      "required": false
+    },
+    {
+      "name": "user_request",
+      "description": "The user's editing request",
+      "required": true
+    }
+  ]
+}

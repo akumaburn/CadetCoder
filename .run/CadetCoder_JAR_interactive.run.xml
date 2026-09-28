@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="CadetCoder JAR (interactive)" type="JarApplication">
+    <option name="JAR_PATH" value="$PROJECT_DIR$/target/CadetCoder-1.0-SNAPSHOT.jar" />
+    <option name="PROGRAM_PARAMETERS" value="-i" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <!-- Required for the TamboUI/JLine TUI: gives the process a real PTY so raw mode and
+         the alternate screen render correctly inside the IDE's run console. -->
+    <option name="EMULATE_TERMINAL" value="true" />
+    <method v="2" />
+  </configuration>
+</component>

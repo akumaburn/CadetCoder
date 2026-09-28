@@ -1,0 +1,23 @@
+{
+  "name": "websearch",
+  "version": "2.0",
+  "description": "System prompt for web search result analysis",
+  "variables": [
+    {
+      "name": "search_query",
+      "description": "The search query used",
+      "required": true
+    },
+    {
+      "name": "user_intent",
+      "description": "What the user is trying to find or learn",
+      "required": false
+    },
+    {
+      "name": "search_results",
+      "description": "The search results to analyze",
+      "required": true
+    }
+  ],
+  "content_path": "content/websearch.md"
+}

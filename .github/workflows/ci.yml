@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref; a stale run of an outdated commit
+# tells us nothing and just occupies runners.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (JDK ${{ matrix.java }})
+    runs-on: ubuntu-latest
+    strategy:
+      # Run every JDK to completion so a failure on one version does not hide
+      # the result of the other.
+      fail-fast: false
+      matrix:
+        java: [ '17', '21' ]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          # Caches ~/.m2/repository keyed on the POM checksums.
+          cache: maven
+
+      - name: Build and verify
+        run: mvn -B clean verify
+
+      - name: Upload surefire reports
+        # Only on failure: the reports are the diagnostic payload for a red build.
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports-jdk${{ matrix.java }}
+          path: |
+            target/surefire-reports/
+          retention-days: 7
+          if-no-files-found: ignore

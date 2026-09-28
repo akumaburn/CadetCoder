@@ -1,0 +1,17 @@
+package com.eonmux.cadetcoder.harness.model.lang;
+
+/** The kinds of thing the lexer recognises. */
+public enum TokenType {
+
+    NUMBER, STRING, IDENTIFIER,
+
+    FN, LET, RETURN, IF, ELSE, WHILE, FOR, IN, BREAK, CONTINUE, HIDDEN, TRUE, FALSE, NULL,
+
+    PLUS, MINUS, STAR, SLASH, PERCENT, BANG,
+    EQUAL_EQUAL, BANG_EQUAL, LESS, LESS_EQUAL, GREATER, GREATER_EQUAL,
+    AND_AND, OR_OR, EQUAL, QUESTION, COLON,
+    DOT, COMMA, SEMICOLON,
+    LEFT_PAREN, RIGHT_PAREN, LEFT_BRACKET, RIGHT_BRACKET, LEFT_BRACE, RIGHT_BRACE,
+
+    END
+}

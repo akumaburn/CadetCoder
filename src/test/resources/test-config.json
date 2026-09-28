@@ -1,0 +1,61 @@
+{
+  "ai": {
+    "apiKey": "test-key",
+    "apiEndpoint": "http://localhost:9999",
+    "model": "test-model",
+    "localEndpoint": "http://localhost:9999",
+    "localModel": "test-local-model",
+    "temperature": 0.7,
+    "maxTokens": 100,
+    "completionTimeoutSeconds": 1
+  },
+  "context": {
+    "totalTokens": 8192,
+    "maxFileTokens": 2048,
+    "maxSearchResults": 10
+  },
+  "indexing": {
+    "indexLocation": "./test-index",
+    "excludePatterns": [
+      ".git",
+      "node_modules",
+      "target",
+      "build",
+      ".cadet"
+    ],
+    "rebuildThreshold": 1000
+  },
+  "git": {
+    "enabled": false,
+    "autoCommit": false,
+    "autoCommitInterval": 30,
+    "gitPath": "git"
+  },
+  "ui": {
+    "colorEnabled": false,
+    "theme": "default",
+    "verbosityLevel": 0
+  },
+  "performance": {
+    "cacheEnabled": false,
+    "cacheSize": 100,
+    "parallelProcessing": false,
+    "threadCount": 1
+  },
+  "security": {
+    "readOnlyMode": false,
+    "allowRemoteExecution": true,
+    "trustedHosts": [
+      "localhost"
+    ],
+    "requireConfirmation": false,
+    "allowOutsideProject": true,
+    "sandboxMode": false
+  },
+  "logging": {
+    "level": "ERROR",
+    "file": "./test-logs/cadet.log",
+    "maxFileSize": "1MB",
+    "maxBackupFiles": 1
+  }
+}

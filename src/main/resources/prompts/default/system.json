@@ -1,0 +1,7 @@
+{
+  "name": "system",
+  "version": "1.0",
+  "description": "Operating principles prepended to the system prompt of every AI request",
+  "content_path": "content/system.md",
+  "variables": []
+}

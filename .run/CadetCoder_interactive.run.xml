@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="CadetCoder (interactive)" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.eonmux.cadetcoder.Main" />
+    <module name="CadetCoder" />
+    <option name="PROGRAM_PARAMETERS" value="--interactive" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$" />
+    <!-- Required for the TamboUI/JLine TUI: gives the process a real PTY so raw mode and
+         the alternate screen render correctly inside the IDE's run console. -->
+    <option name="EMULATE_TERMINAL" value="true" />
+    <extension name="coverage">
+      <pattern>
+        <option name="PATTERN" value="com.eonmux.cadetcoder.*" />
+        <option name="ENABLED" value="true" />
+      </pattern>
+    </extension>
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

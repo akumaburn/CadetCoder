@@ -1,0 +1,18 @@
+{
+  "name": "analyze",
+  "version": "2.0",
+  "description": "System prompt for code analysis",
+  "content_path": "content/analyze.md",
+  "variables": [
+    {
+      "name": "code_content",
+      "description": "The code to be analyzed",
+      "required": true
+    },
+    {
+      "name": "analysis_request",
+      "description": "Specific analysis request from the user",
+      "required": false
+    }
+  ]
+}

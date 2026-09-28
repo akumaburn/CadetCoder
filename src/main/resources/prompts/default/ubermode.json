@@ -1,0 +1,7 @@
+{
+  "name": "ubermode",
+  "version": "1.0",
+  "description": "What the model is told while a run is being driven to completion rather than to a stopping point",
+  "content_path": "content/ubermode.md",
+  "variables": []
+}

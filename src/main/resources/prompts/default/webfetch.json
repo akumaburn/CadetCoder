@@ -1,0 +1,23 @@
+{
+  "name": "webfetch",
+  "version": "2.0",
+  "description": "System prompt for analyzing fetched web content",
+  "variables": [
+    {
+      "name": "url",
+      "description": "The URL that was fetched",
+      "required": true
+    },
+    {
+      "name": "user_prompt",
+      "description": "What the user wants to know about the content",
+      "required": true
+    },
+    {
+      "name": "web_content",
+      "description": "The fetched and processed web content",
+      "required": true
+    }
+  ],
+  "content_path": "content/webfetch.md"
+}

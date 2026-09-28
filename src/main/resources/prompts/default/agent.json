@@ -1,0 +1,35 @@
+{
+  "name": "agent",
+  "version": "2.0",
+  "description": "Autonomous AI agent for complex multi-step task execution",
+  "content_path": "content/agent.md",
+  "variables": [
+    {
+      "name": "task_description",
+      "description": "The task for the agent to complete",
+      "required": true
+    },
+    {
+      "name": "step_limit",
+      "description": "Maximum number of steps allowed",
+      "required": false,
+      "default": "10"
+    },
+    {
+      "name": "timeout_minutes",
+      "description": "Timeout in minutes",
+      "required": false,
+      "default": "10"
+    },
+    {
+      "name": "step_number",
+      "description": "Current step number",
+      "required": false
+    },
+    {
+      "name": "available_commands",
+      "description": "The list of commands (with usage) the agent may invoke",
+      "required": false
+    }
+  ]
+}

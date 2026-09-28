@@ -1,0 +1,24 @@
+{
+  "name": "refactor",
+  "version": "2.0",
+  "description": "System prompt for code refactoring",
+  "content_path": "content/refactor.md",
+  "variables": [
+    {
+      "name": "code_content",
+      "description": "The code to be refactored",
+      "required": true
+    },
+    {
+      "name": "refactor_request",
+      "description": "Specific refactoring request from the user",
+      "required": true
+    },
+    {
+      "name": "language",
+      "description": "Programming language of the code",
+      "required": false,
+      "default": "java"
+    }
+  ]
+}

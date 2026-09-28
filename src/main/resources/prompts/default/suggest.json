@@ -1,0 +1,18 @@
+{
+  "name": "suggest",
+  "version": "2.0",
+  "description": "System prompt for code improvement suggestions",
+  "variables": [
+    {
+      "name": "code_content",
+      "description": "The code to suggest improvements for",
+      "required": true
+    },
+    {
+      "name": "suggestion_request",
+      "description": "Specific suggestion request from the user",
+      "required": false
+    }
+  ],
+  "content_path": "content/suggest.md"
+}

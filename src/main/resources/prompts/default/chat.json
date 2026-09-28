@@ -1,0 +1,13 @@
+{
+  "name": "chat",
+  "version": "2.0",
+  "description": "Natural language command interpreter for CadetCoder",
+  "content_path": "content/chat.md",
+  "variables": [
+    {
+      "name": "available_commands",
+      "description": "List of available commands with descriptions",
+      "required": true
+    }
+  ]
+}

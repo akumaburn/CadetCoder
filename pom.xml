@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.eonmux</groupId>
+    <artifactId>CadetCoder</artifactId>
+    <version>1.0-SNAPSHOT</version>
+
+    <name>CadetCoder</name>
+    <description>AI-powered coding assistant for the terminal.</description>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <repositories>
+        <!--
+          TamboUI is published only as snapshot builds, to the Central snapshot
+          repository. A mirror in settings.xml with <mirrorOf>*</mirrorOf> intercepts
+          this repository too. Either make that mirror proxy the Central snapshot
+          repository, or exclude this one with <mirrorOf>*,!central-snapshots</mirrorOf>.
+          The README section "If the build cannot resolve TamboUI" says more.
+        -->
+        <repository>
+            <id>central-snapshots</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+            <releases><enabled>false</enabled></releases>
+            <snapshots><enabled>true</enabled></snapshots>
+        </repository>
+    </repositories>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <slf4j.version>2.0.13</slf4j.version>
+        <tamboui.version>0.5.0-SNAPSHOT</tamboui.version>
+    </properties>
+
+    <dependencies>
+        <!-- https://mvnrepository.com/artifact/org.magicwerk.brownies/brownies-collections -->
+        <dependency>
+            <groupId>org.magicwerk.brownies</groupId>
+            <artifactId>brownies-collections</artifactId>
+            <version>0.9.23</version>
+        </dependency>
+
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+            <version>5.12.1</version>
+        </dependency>
+
+        <!-- TamboUI: modern Java TUI framework (immediate-mode, ratatui/bubbletea-style).
+             tamboui-tui provides the runner/event loop, tamboui-widgets the widgets,
+             and tamboui-jline3-backend the JLine 3 terminal backend (auto-discovered via
+             ServiceLoader). tamboui-core/-annotations and org.jline:jline come transitively. -->
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-tui</artifactId>
+            <version>${tamboui.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-widgets</artifactId>
+            <version>${tamboui.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>dev.tamboui</groupId>
+            <artifactId>tamboui-jline3-backend</artifactId>
+            <version>${tamboui.version}</version>
+        </dependency>
+        <!-- Apache Lucene -->
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>9.11.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+            <version>9.11.1</version>
+        </dependency>
+
+        <!-- JGit -->
+        <dependency>
+            <groupId>org.eclipse.jgit</groupId>
+            <artifactId>org.eclipse.jgit</artifactId>
+            <version>6.9.0.202403050737-r</version>
+        </dependency>
+
+        <!-- https://mvnrepository.com/artifact/info.picocli/picocli -->
+        <dependency>
+            <groupId>info.picocli</groupId>
+            <artifactId>picocli</artifactId>
+            <version>4.7.6</version>
+        </dependency>
+
+        <!-- SLF4J for logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>${slf4j.version}</version>
+        </dependency>
+
+        <!-- Jackson dependencies -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>2.17.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.17.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.1</version>
+        </dependency>
+
+        <!-- **Added Dependencies for Git Integration** -->
+        <!-- JGit API is already included above -->
+        <dependency>
+            <groupId>org.reflections</groupId>
+            <artifactId>reflections</artifactId>
+            <version>0.10.2</version>
+        </dependency>
+        
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>5.12.0</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>3.26.0</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Named explicitly only so the second entry can be added: declaring any resource
+             replaces the default, so src/main/resources has to be restated alongside it. The
+             licence and the notice travel inside the jar because that is the artifact that gets
+             distributed, and a licence left behind in the repository does not accompany it. -->
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+            </resource>
+            <resource>
+                <directory>${project.basedir}</directory>
+                <targetPath>META-INF</targetPath>
+                <includes>
+                    <include>LICENSE</include>
+                    <include>NOTICE</include>
+                </includes>
+            </resource>
+            <!-- The licences of bundled dependencies that do not ship one, or that ship one at a
+                 path every other dependency also uses. Kept at a path of their own so the shade
+                 plugin cannot collapse them into each other; reproducing them is a condition of
+                 the MIT and BSD licences among them. -->
+            <resource>
+                <directory>${project.basedir}/licenses</directory>
+                <targetPath>META-INF/licenses</targetPath>
+            </resource>
+        </resources>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.13.0</version>
+                <configuration>
+                    <!--
+                        The flag is inverted from how it reads: TRUE rebuilds the module whenever
+                        anything changed, FALSE hands javac only the sources whose own class files
+                        are stale.
+
+                        FALSE is the faster setting and was used here for that reason, at a cost that
+                        turned out not to be worth it: staleness is judged per source file, and a
+                        file is not stale merely because something it CALLS changed. Deleting a
+                        method still used by a test therefore produced BUILD SUCCESS from
+                        `mvn test-compile`, because the test's own source had not been touched, and
+                        the stale class file was kept. The error surfaced later as a NoSuchMethodError
+                        from inside an unrelated-looking test, or (for a call that was removed rather
+                        than renamed) not at all.
+
+                        A build that reports success while the module does not compile is worse than
+                        a slow one. The difference is ~3.5s per edit-and-test cycle (compile 1.0s
+                        becomes 4.5s); the test phase itself is unaffected at ~15.7s.
+                    -->
+                    <useIncrementalCompilation>true</useIncrementalCompilation>
+                    <compilerArgs>
+                        <arg>-Xlint:unchecked</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+            
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <configuration>
+                    <parallel>none</parallel>
+                    <!-- Deterministic class order: tests share a single reused fork and some
+                         rely on global static state (e.g. Configuration.defaultBaseDir), so the
+                         default non-deterministic "filesystem" order was a latent flakiness source. -->
+                    <runOrder>alphabetical</runOrder>
+                    <threadCount>1</threadCount>
+                    <reuseForks>true</reuseForks>
+                    <forkCount>1</forkCount>
+                    <forkedProcessTimeoutInSeconds>180</forkedProcessTimeoutInSeconds>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                    <!--
+                        Tests get their own home directory, under target/.
+
+                        Configuration.defaultBaseDir is derived from user.home at class-load, and
+                        several commands resolve caches, sessions and logs from it directly. Left
+                        alone the suite therefore read and wrote the developer's real ~/.cadet: it
+                        appended to their log, rewrote their session.json and models cache, and
+                        (through a since-fixed leak) built a second configuration tree at
+                        ~/.config/cadet. A test run must not be able to touch either.
+
+                        Set here rather than per-test because the default is captured when
+                        Configuration is first loaded, which is before any @Before can run.
+                    -->
+                    <systemPropertyVariables>
+                        <user.home>${project.build.directory}/test-home</user.home>
+                    </systemPropertyVariables>
+                    <excludes>
+                    </excludes>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <version>3.4.1</version>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>com.eonmux.cadetcoder.Main</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.6.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <shadedArtifactAttached>false</shadedArtifactAttached>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <!-- Every bundled dependency ships its own META-INF/LICENSE and
+                                     META-INF/NOTICE at the same path, so without these the shaded
+                                     jar keeps whichever one the plugin happened to copy last and
+                                     silently drops the rest. Redistributing them is a condition of
+                                     several of those licences; see the NOTICE file. -->
+                                <!-- Discards the dependencies' own META-INF/LICENSE copies, which
+                                     all land at the same path and would otherwise leave whichever
+                                     one was copied last. What they say is not lost: the Apache 2.0
+                                     text is this project's own LICENSE, and the licences that are
+                                     not Apache 2.0 travel in META-INF/licenses. Our LICENSE is put
+                                     back afterwards, because this transformer drops that too. -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheLicenseResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.IncludeResourceTransformer">
+                                    <resource>META-INF/LICENSE</resource>
+                                    <file>${project.basedir}/LICENSE</file>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ApacheNoticeResourceTransformer">
+                                    <projectName>CadetCoder</projectName>
+                                    <addHeader>false</addHeader>
+                                </transformer>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>com.eonmux.cadetcoder.Main</mainClass>
+                                    <manifestEntries>
+                                        <!-- Shaded-in dependencies (Lucene, Jackson) ship
+                                             META-INF/versions/ classes. The JVM only honours those
+                                             when the jar manifest declares itself multi-release, so
+                                             without this the versioned classes are dead weight. -->
+                                        <Multi-Release>true</Multi-Release>
+                                        <!-- On Java 22 and later the versioned Lucene classes map
+                                             files through java.lang.foreign, and the JVM printed a
+                                             restricted-method warning into command output the
+                                             first time it did. An executable jar grants the
+                                             access here; earlier Java versions ignore the entry. -->
+                                        <Enable-Native-Access>ALL-UNNAMED</Enable-Native-Access>
+                                    </manifestEntries>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            
+            <!-- JaCoCo for code coverage -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>jacoco-check</id>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <!--
+                              Ratchet, not aspiration. The rule is BUNDLE-scoped rather than
+                              PACKAGE-scoped because a per-package floor cannot be set at a useful
+                              level: the TUI (com.eonmux.cadetcoder.commands.InteractiveShell alone)
+                              is driven by a terminal rather than by tests, so the package holding it
+                              sits far below any figure the rest of the project can meet, and a
+                              minimum low enough for it enforces nothing anywhere else.
+
+                              Measured 2026-09-15 (mvn -o -B clean verify, 3935 tests):
+                                LINE   24347/30409 = 0.8007
+                                BRANCH 11529/16950 = 0.6802
+
+                              The LINE margin is about 20 lines and the BRANCH margin about 170.
+                              A change that adds uncovered lines can therefore fail the build on
+                              coverage alone while every test passes; that is the ratchet working,
+                              and the answer is to cover the new code rather than to move the line.
+                              The line minimum is the 80% this project holds itself to and now meets.
+                              Raise these as coverage improves; never lower them to make a build pass.
+                            -->
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.80</minimum>
+                                        </limit>
+                                        <limit>
+                                            <counter>BRANCH</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.67</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
