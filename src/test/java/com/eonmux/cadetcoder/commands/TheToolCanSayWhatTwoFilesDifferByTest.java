@@ -3,6 +3,8 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.test.TestOutputCapture;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
+import com.eonmux.cadetcoder.ui.TuiMode;
 
 import org.junit.After;
 import org.junit.Before;
@@ -94,6 +96,34 @@ public class TheToolCanSayWhatTwoFilesDifferByTest {
         assertThat(shown()).contains("-two");
         assertThat(shown()).contains("+TWO");
         assertThat(exit).as("a difference is the answer, not a failure").isZero();
+    }
+
+    /**
+     * In the shell, the diff reaches the renderer as program output.
+     *
+     * <p>Read as Markdown, a removed line and an added line both became list items behind the same
+     * bullet, and the diff no longer said which was which. See {@link ProgramOutput}.</p>
+     */
+    @Test
+    public void inTheShellTheDiffIsMarkedAsProgramOutput() throws Exception {
+        write("before.txt", "one\ntwo\n");
+        write("after.txt", "one\nTWO\n");
+        String previous = System.getProperty(TuiMode.OVERRIDE_PROPERTY);
+        System.setProperty(TuiMode.OVERRIDE_PROPERTY, "true");
+        try {
+            diff("before.txt", "after.txt");
+        } finally {
+            if (previous == null) {
+                System.clearProperty(TuiMode.OVERRIDE_PROPERTY);
+            } else {
+                System.setProperty(TuiMode.OVERRIDE_PROPERTY, previous);
+            }
+        }
+
+        String printed = shown();
+        assertThat(printed.indexOf(ProgramOutput.OPEN)).isNotNegative()
+                                                       .isLessThan(printed.indexOf("-two"));
+        assertThat(printed.indexOf(ProgramOutput.CLOSE)).isGreaterThan(printed.indexOf("+TWO"));
     }
 
     @Test

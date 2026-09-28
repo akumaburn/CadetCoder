@@ -3,7 +3,7 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.security.SecurityValidator;
-import com.eonmux.cadetcoder.ui.UnifiedOutput;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.util.TextFiles;
 import com.eonmux.cadetcoder.util.UnifiedDiff;
 
@@ -78,9 +78,9 @@ public class DiffCommand extends LoggingCommandSupport implements CommandRegistr
                                          + options.second);
             return;
         }
-        // Through UnifiedOutput rather than printInfo, so a diff is not suppressed at the quieter
+        // Printed as it is rather than through printInfo, so a diff is not suppressed at the quieter
         // verbosities. It is the whole answer, not a remark about the answer.
-        UnifiedOutput.println(diff);
+        ProgramOutput.println(diff);
     }
 
     /**

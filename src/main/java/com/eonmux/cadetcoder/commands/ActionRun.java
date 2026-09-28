@@ -8,7 +8,7 @@ import com.eonmux.cadetcoder.security.SecretRedactor;
 import com.eonmux.cadetcoder.security.SecurityValidator;
 import com.eonmux.cadetcoder.ui.CapturedRun;
 import com.eonmux.cadetcoder.ui.CommandOutputVisibility;
-import com.eonmux.cadetcoder.ui.UnifiedOutput;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -240,7 +240,7 @@ final class ActionRun {
 
         // A console setting, not a data-flow one: the model is given the captured text either way.
         if (CommandOutputVisibility.isVisible() && !captured.isEmpty()) {
-            UnifiedOutput.println(captured.stripTrailing());
+            ProgramOutput.println(captured.stripTrailing());
         }
 
         record(action, run.exitCode(), captured);

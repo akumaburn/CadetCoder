@@ -4,6 +4,7 @@ import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ui.ColorTheme;
 import com.eonmux.cadetcoder.ui.ColorThemeManager;
 import com.eonmux.cadetcoder.ui.Glyphs;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.ui.UnifiedOutput;
 
 import java.nio.file.Path;
@@ -98,17 +99,22 @@ final class GrepReport {
         captured.append(HEADER_GLYPHS.headerMarker()).append(' ').append(header)
                 .append(HEADER_GLYPHS.headerCloser()).append('\n');
 
-        int previousLine = 0;
-        for (GrepMatch match : matches) {
-            if (previousLine != 0 && match.lineNumber > previousLine + 1) {
-                UnifiedOutput.println(GAP);
-                captured.append(GAP).append("\n");
-            }
-            previousLine = match.lineNumber;
+        int     previousLine = 0;
+        boolean marked       = ProgramOutput.begin();
+        try {
+            for (GrepMatch match : matches) {
+                if (previousLine != 0 && match.lineNumber > previousLine + 1) {
+                    UnifiedOutput.println(GAP);
+                    captured.append(GAP).append("\n");
+                }
+                previousLine = match.lineNumber;
 
-            String rendered = gutter(match) + body(match);
-            UnifiedOutput.println(rendered);
-            captured.append(rendered).append("\n");
+                String rendered = gutter(match) + body(match);
+                UnifiedOutput.println(rendered);
+                captured.append(rendered).append("\n");
+            }
+        } finally {
+            ProgramOutput.end(marked);
         }
         UnifiedOutput.println();
         captured.append("\n");

@@ -8,7 +8,7 @@ import com.eonmux.cadetcoder.ai.StandInAnswer;
 import com.eonmux.cadetcoder.git.GitIntegration;
 import com.eonmux.cadetcoder.git.GitIntegrationManager;
 import com.eonmux.cadetcoder.logging.DebugLogger;
-import com.eonmux.cadetcoder.ui.UnifiedOutput;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.security.ReadOnlyGuard;
 import com.eonmux.cadetcoder.ui.InteractivePrompts;
 import picocli.CommandLine.*;
@@ -130,7 +130,7 @@ public class CommitCommand implements IterativeCommand, CommandRegistry.Interrup
                 case "show_status":
                     String gitStatus = (String) context.get("status");
                     OutputFormatter.printHeader("Git Status:");
-                    UnifiedOutput.println(gitStatus);
+                    ProgramOutput.println(gitStatus);
 
                     // Always offer to suggest a commit message since we can't easily check git status
                     context.put("step", "suggest_message");

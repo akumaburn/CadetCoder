@@ -4,6 +4,7 @@ import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.eonmux.cadetcoder.security.SecurityValidator;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.ui.UnifiedOutput;
 import com.eonmux.cadetcoder.util.FilePathResolver;
 import com.eonmux.cadetcoder.util.TextFiles;
@@ -323,17 +324,22 @@ public class ReadCommand extends LoggingCommandSupport implements CommandRegistr
         StringBuilder contentCapture = new StringBuilder();
 
         // Print lines with numbers (cat -n format)
-        for (int i = startLine - 1; i < endLine; i++) {
-            String line = lines.get(i);
-            // Truncate lines longer than 200 characters
-            if (line.length() > 200) {
-                line = line.substring(0, 200) + "... (truncated)";
-            }
-            String numbered = numberedLine(i + 1, line);
-            UnifiedOutput.print(numbered);
+        boolean marked = ProgramOutput.begin();
+        try {
+            for (int i = startLine - 1; i < endLine; i++) {
+                String line = lines.get(i);
+                // Truncate lines longer than 200 characters
+                if (line.length() > 200) {
+                    line = line.substring(0, 200) + "... (truncated)";
+                }
+                String numbered = numberedLine(i + 1, line);
+                UnifiedOutput.print(numbered);
 
-            // Capture for debug log
-            contentCapture.append(numbered);
+                // Capture for debug log
+                contentCapture.append(numbered);
+            }
+        } finally {
+            ProgramOutput.end(marked);
         }
 
         // Log file read operation to debug log
@@ -548,26 +554,33 @@ public class ReadCommand extends LoggingCommandSupport implements CommandRegistr
             }
 
             // Read and display lines
-            while (lineNumber <= endLine && (line = reader.readLine()) != null) {
-                // Check for interruption every 100 lines
-                if (linesRead > 0 && linesRead % 100 == 0 && interruptionContext != null && interruptionContext.isInterrupted()) {
-                    logStep("Line reading", "Interrupted by user after reading " + linesRead + " lines");
-                    OutputFormatter.printWarning("Operation interrupted by user after reading " + linesRead + " lines");
-                    return 0;  // Return 0 since we've successfully read some lines
-                }
-                
-                // Truncate lines longer than 200 characters
-                if (line.length() > 200) {
-                    line = line.substring(0, 200) + "... (truncated)";
-                }
-                String formattedLine = numberedLine(lineNumber, line);
-                UnifiedOutput.print(formattedLine);
+            boolean marked = ProgramOutput.begin();
+            try {
+                while (lineNumber <= endLine && (line = reader.readLine()) != null) {
+                    // Check for interruption every 100 lines
+                    if (linesRead > 0 && linesRead % 100 == 0 && interruptionContext != null && interruptionContext.isInterrupted()) {
+                        ProgramOutput.end(marked);
+                        marked = false;
+                        logStep("Line reading", "Interrupted by user after reading " + linesRead + " lines");
+                        OutputFormatter.printWarning("Operation interrupted by user after reading " + linesRead + " lines");
+                        return 0;  // Return 0 since we've successfully read some lines
+                    }
 
-                // Capture for debug log
-                contentCapture.append(formattedLine);
+                    // Truncate lines longer than 200 characters
+                    if (line.length() > 200) {
+                        line = line.substring(0, 200) + "... (truncated)";
+                    }
+                    String formattedLine = numberedLine(lineNumber, line);
+                    UnifiedOutput.print(formattedLine);
 
-                lineNumber++;
-                linesRead++;
+                    // Capture for debug log
+                    contentCapture.append(formattedLine);
+
+                    lineNumber++;
+                    linesRead++;
+                }
+            } finally {
+                ProgramOutput.end(marked);
             }
 
             // Continue counting if we haven't already

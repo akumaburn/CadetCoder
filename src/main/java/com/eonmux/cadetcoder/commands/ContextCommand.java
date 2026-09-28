@@ -3,6 +3,7 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.context.ProjectContext;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.ui.UnifiedOutput;
 import picocli.CommandLine.*;
 
@@ -85,7 +86,7 @@ public class ContextCommand implements CommandRegistry.Command, Callable<Integer
         if (verboseMode) {
             UnifiedOutput.println("\nContext content:");
             UnifiedOutput.println("================");
-            UnifiedOutput.println(context.getProjectContext());
+            ProgramOutput.println(context.getProjectContext());
         } else {
             String content = context.getProjectContext();
             int    lines   = content.split("\n").length;
@@ -95,9 +96,8 @@ public class ContextCommand implements CommandRegistry.Command, Callable<Integer
             // Show first few lines
             String[] contentLines = content.split("\n");
             UnifiedOutput.println("\nFirst 10 lines:");
-            for (int i = 0; i < Math.min(10, contentLines.length); i++) {
-                UnifiedOutput.println(contentLines[i]);
-            }
+            ProgramOutput.println(String.join("\n", java.util.Arrays.copyOfRange(
+                    contentLines, 0, Math.min(10, contentLines.length))));
             if (contentLines.length > 10) {
                 UnifiedOutput.println("... (" + (contentLines.length - 10) + " more lines)");
             }

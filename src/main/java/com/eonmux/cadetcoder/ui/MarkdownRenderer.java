@@ -27,7 +27,8 @@ import java.util.regex.Pattern;
  * {@link OutputLineStyler} markers -- either vocabulary: {@code ✓ ⚠ ✗ ℹ ▎ ▸} or the bracketed
  * fallbacks {@code [OK] [WARN] [ERR] [i] === … === -- … --}) are kept
  * on their semantic colour rather than reinterpreted as Markdown, so structured tool output is
- * unchanged. Inline emphasis uses conservative <em>flanking</em> rules so identifiers and paths like
+ * unchanged. Lines between the markers of {@link ProgramOutput} are what a program printed, and
+ * none of them is read as Markdown. Inline emphasis uses conservative <em>flanking</em> rules so identifiers and paths like
  * {@code my_file_name} or {@code a*b} are not accidentally italicised. Glyphs degrade to ASCII via
  * {@link Glyphs}. The renderer is pure and side-effect free.</p>
  */
@@ -78,6 +79,16 @@ public final class MarkdownRenderer {
         while (i < rawLines.size()) {
             String raw = rawLines.get(i);
             String stripped = raw == null ? "" : raw.stripLeading();
+
+            // What a program printed is shown as it was printed. See ProgramOutput.
+            if (ProgramOutput.opens(raw)) {
+                i = renderProgramOutput(rawLines, i + 1, width, prose, out);
+                continue;
+            }
+            if (ProgramOutput.closes(raw)) {
+                i++;
+                continue;
+            }
 
             // Fenced code block — consume until the closing fence (or end of input).
             if (isFence(stripped)) {
@@ -167,19 +178,52 @@ public final class MarkdownRenderer {
         // screen but put two characters in front of every line of code anyone copied out of the
         // transcript -- so the code had to be cleaned up before it could be used. The rules above and
         // below delimit the block, and the code keeps its own colour.
+        // A block left open ends where program output begins, so the markers are read as markers
+        // and never shown as code.
         int i = start + 1;
-        while (i < rawLines.size() && !isFence(rawLines.get(i).stripLeading())) {
+        while (i < rawLines.size() && !isFence(rawLines.get(i).stripLeading())
+               && !ProgramOutput.isMarker(rawLines.get(i))) {
             String codeLine = rawLines.get(i) == null ? "" : stripTabs(rawLines.get(i));
             for (String frag : hardWrap(codeLine, Math.max(1, width))) {
                 out.add(Line.styled(frag, codeStyle));
             }
             i++;
         }
-        if (i < rawLines.size()) {
+        if (i < rawLines.size() && !ProgramOutput.isMarker(rawLines.get(i))) {
             i++; // consume the closing fence
         }
         out.add(Line.empty());
         return i;
+    }
+
+    /**
+     * Renders a run of program output, up to its closing marker or the end of the lines.
+     *
+     * <p>Nothing in the run is read as Markdown. A line that carries one of the tool's own markers
+     * keeps its style, as it does outside the run. Every other line keeps its text exactly,
+     * wrapped at the full width like a line of code, so no character of it is lost or moved.</p>
+     *
+     * @return the index of the first line after the run
+     */
+    private int renderProgramOutput(List<String> rawLines, int start, int width, int prose,
+                                    List<Line> out) {
+        int i = start;
+        while (i < rawLines.size() && !ProgramOutput.closes(rawLines.get(i))) {
+            String raw = rawLines.get(i) == null ? "" : rawLines.get(i);
+            OutputLineStyler.Kind kind = OutputLineStyler.classify(raw);
+            if (kind != OutputLineStyler.Kind.NORMAL) {
+                Style st = OutputLineStyler.styleFor(kind, theme);
+                for (String frag : wrapMarked(raw, prose)) {
+                    out.add(Line.styled(frag, st));
+                }
+            } else {
+                for (String frag : hardWrap(stripTabs(raw), Math.max(1, width))) {
+                    out.add(Line.styled(frag, normal));
+                }
+            }
+            i++;
+        }
+        return i < rawLines.size() ? i + 1 : i;
     }
 
     private void renderHeading(int level, String content, int width, List<Line> out) {

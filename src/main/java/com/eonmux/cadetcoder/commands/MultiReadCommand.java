@@ -418,10 +418,9 @@ public class MultiReadCommand extends LoggingCommandSupport
         String stdout   = run.output();
         String stderr   = failure.toString();
 
-        // Re-emitted after the capture ends, so it goes wherever this thread's output belongs.
-        if (!stdout.isEmpty()) {
-            com.eonmux.cadetcoder.ui.UnifiedOutput.print(stdout);
-        }
+        // Re-emitted after the capture ends, so it goes wherever this thread's output belongs. The
+        // capture held no markers, so the file's lines are marked here.
+        com.eonmux.cadetcoder.ui.ProgramOutput.print(stdout);
         if (!stderr.isEmpty()) {
             com.eonmux.cadetcoder.ui.UnifiedOutput.printlnErr(stderr);
         }

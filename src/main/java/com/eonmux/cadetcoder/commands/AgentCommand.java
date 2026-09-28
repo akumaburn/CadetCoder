@@ -706,7 +706,7 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         // capture has ended sends it wherever this thread's output belongs -- the terminal, or the
         // enclosing worker's transcript.
         if (com.eonmux.cadetcoder.ui.CommandOutputVisibility.isVisible() && !output.isEmpty()) {
-            com.eonmux.cadetcoder.ui.UnifiedOutput.print(output);
+            com.eonmux.cadetcoder.ui.ProgramOutput.print(output);
         }
 
         if (outSink != null && !output.isEmpty()) {

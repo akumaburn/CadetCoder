@@ -3,6 +3,8 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.test.TestOutputCapture;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
+import com.eonmux.cadetcoder.ui.TuiMode;
 import org.junit.*;
 import org.mockito.*;
 
@@ -80,6 +82,43 @@ public class BashCommandTest {
             // Verify
             assertThat(exitCode).isEqualTo(1);
             assertThat(outputCapture.getAllOutput()).contains("Remote execution is disabled");
+        }
+    }
+
+    /**
+     * In the shell, what the program printed reaches the renderer as program output.
+     *
+     * <p>Read as Markdown, a line such as {@code - removed} became a list item. See
+     * {@link ProgramOutput}.</p>
+     */
+    @Test
+    public void inTheShellWhatTheProgramPrintedIsMarkedAsProgramOutput() {
+        String previous = System.getProperty(TuiMode.OVERRIDE_PROPERTY);
+        System.setProperty(TuiMode.OVERRIDE_PROPERTY, "true");
+        try (MockedStatic<ConfigManager> configMock = mockStatic(ConfigManager.class)) {
+            Configuration config = new Configuration();
+            config.getUi().setColorEnabled(false);
+            config.getSecurity().setRequireConfirmation(false);
+            configMock.when(ConfigManager::getInstance).thenReturn(mockConfigManager);
+            when(mockConfigManager.getConfig()).thenReturn(config);
+
+            int exitCode = bashCommand.execute(new String[] {"-f", "echo", "'- removed'"});
+
+            String printed = outputCapture.getAllOutput();
+            // The header line names the command too, so the output line is found as a line.
+            int output = printed.indexOf("\n- removed\n");
+            assertThat(exitCode).isZero();
+            assertThat(output).isNotNegative();
+            assertThat(printed.indexOf(ProgramOutput.OPEN)).isNotNegative().isLessThan(output);
+            assertThat(printed.indexOf(ProgramOutput.CLOSE))
+                    .isGreaterThan(output)
+                    .isLessThan(printed.indexOf("Command completed successfully"));
+        } finally {
+            if (previous == null) {
+                System.clearProperty(TuiMode.OVERRIDE_PROPERTY);
+            } else {
+                System.setProperty(TuiMode.OVERRIDE_PROPERTY, previous);
+            }
         }
     }
 

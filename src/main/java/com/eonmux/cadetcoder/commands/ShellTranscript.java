@@ -3,6 +3,7 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.session.TranscriptEntry;
 import com.eonmux.cadetcoder.ui.CollapsedOutput;
 import com.eonmux.cadetcoder.ui.OutputLineStyler;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -56,6 +57,13 @@ public final class ShellTranscript {
      * marker never arrived must not swallow the sections of the command after it.</p>
      */
     private boolean insideHiddenOutput;
+
+    /**
+     * Whether the lines arriving now are what a program printed.
+     *
+     * <p>Held and cleared like {@link #insideHiddenOutput}, and for the same reason.</p>
+     */
+    private boolean insideProgramOutput;
     private String  pending = "";
     private int     nextId  = 0;
 
@@ -101,6 +109,7 @@ public final class ShellTranscript {
     private synchronized Segment beginSegment(Kind kind, String title, boolean ephemeral) {
         flushPendingToSink();
         insideHiddenOutput = false;
+        insideProgramOutput = false;
         Segment s = new Segment(nextId++, kind, 0, title == null ? "" : title, perSegmentLines,
                                 ephemeral);
         segments.add(s);
@@ -386,6 +395,10 @@ public final class ShellTranscript {
      * opening marker -- so the body went on screen in full while the marker sat in the segment
      * behind it with nothing left to hide. Hidden output belongs to the result that produced it,
      * whatever shape the text is.</p>
+     *
+     * <p>Program output still opens sections, because a step's output holds the tool's own
+     * sub-headers. The run of program output then goes on in the new section, so that section
+     * begins with an opening marker of its own.</p>
      */
     private void routeCompleteLine(String line) {
         ensureActive();
@@ -393,6 +406,10 @@ public final class ShellTranscript {
             insideHiddenOutput = true;
         } else if (CollapsedOutput.closes(line)) {
             insideHiddenOutput = false;
+        } else if (ProgramOutput.opens(line)) {
+            insideProgramOutput = true;
+        } else if (ProgramOutput.closes(line)) {
+            insideProgramOutput = false;
         }
         if (!insideHiddenOutput && activeTop.kind == Kind.COMMAND
                 && OutputLineStyler.classify(line) == OutputLineStyler.Kind.SUBHEADER) {
@@ -400,6 +417,9 @@ public final class ShellTranscript {
             segments.add(section);
             activeSink = section;
             trim();
+            if (insideProgramOutput) {
+                section.buffer.appendLine(ProgramOutput.OPEN);
+            }
         }
         activeSink.buffer.appendLine(line);
     }

@@ -4,7 +4,7 @@ import com.eonmux.cadetcoder.ExitCode;
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.security.SecretRedactor;
-import com.eonmux.cadetcoder.ui.UnifiedOutput;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import picocli.CommandLine.*;
 
 import java.io.*;
@@ -316,7 +316,7 @@ public class BashCommand extends LoggingCommandSupport implements CommandRegistr
                     logDebug("Command execution", fullOutput);
                     logDebug("Command execution", "=== COMMAND OUTPUT END ===");
                     
-                    UnifiedOutput.print(fullOutput);
+                    ProgramOutput.print(fullOutput);
                 } else {
                     logDebug("Command execution", String.format("COMMAND: %s", command));
                     logDebug("Command execution", String.format("EXIT_CODE: %d", exitCode));

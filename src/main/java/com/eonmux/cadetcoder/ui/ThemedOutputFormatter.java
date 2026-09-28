@@ -511,27 +511,46 @@ public class ThemedOutputFormatter {
      * leads this block, so dropping it at low verbosity leaves a failed step reported by nothing but
      * its line count.</p>
      *
+     * <h2>Why it is marked as program output</h2>
+     *
+     * <p>The text is what a command printed, so the shell must not read it as Markdown. Where the
+     * shell reads the markers of {@link ProgramOutput}, the block is sent between them.</p>
+     *
      * @param text what the step or command produced
      */
     public static void printOutputBlock(String text) {
         if (text == null || text.isEmpty()) {
             return;
         }
-        routeOutput(colorize(indented(text), ColorTheme.ColorType.INFO));
+        boolean marked = ProgramOutput.isSupported();
+        if (marked) {
+            routeOutput(ProgramOutput.OPEN);
+        }
+        try {
+            routeOutput(colorize(indented(text, marked), ColorTheme.ColorType.INFO));
+        } finally {
+            // Closed even when the printing threw, or the rest of the result would be shown as
+            // program output.
+            if (marked) {
+                routeOutput(ProgramOutput.CLOSE);
+            }
+        }
     }
 
     /**
      * Sets a captured block in from the left margin.
      *
-     * <p>A block holding a Markdown fence is marked on every line instead. An indent does not stop
-     * a fence counting -- a renderer strips leading space before it looks -- so an odd number of
-     * fences in captured output would pair with the next one printed and swallow everything between
-     * them. A marker at the start of the line makes each of them inert.</p>
+     * <p>Where the block is not marked as {@link ProgramOutput}, a block holding a Markdown fence
+     * is marked on every line instead. An indent does not stop a fence counting -- a renderer strips
+     * leading space before it looks -- so an odd number of fences in captured output would pair with
+     * the next one printed and swallow everything between them. A marker at the start of the line
+     * makes each of them inert. Inside program output no fence counts, so the indent is enough.</p>
      *
-     * @param text the captured output
+     * @param text   the captured output
+     * @param marked whether the block is sent between the markers of {@link ProgramOutput}
      * @return the block to print, with every line prefixed
      */
-    private static String indented(String text) {
+    private static String indented(String text, boolean marked) {
         String[] lines = SecretRedactor.redact(text).split("\n", -1);
 
         // A block ending in a newline splits to an empty last element. Prefixing it would emit a
@@ -541,7 +560,8 @@ public class ThemedOutputFormatter {
             last--;
         }
 
-        String        prefix = containsFence(lines, last) ? GLYPHS.infoMarker() + " " : NESTED_INDENT;
+        String        prefix = !marked && containsFence(lines, last)
+                               ? GLYPHS.infoMarker() + " " : NESTED_INDENT;
         StringBuilder out    = new StringBuilder();
         for (int i = 0; i < last; i++) {
             if (i > 0) {

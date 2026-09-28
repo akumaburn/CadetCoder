@@ -31,6 +31,23 @@ public class ShellTranscriptTest {
     }
 
     @Test
+    public void aSubheaderInProgramOutputOpensASectionThatGoesOnWithTheRun() {
+        // A step's output is program output and holds the tool's own sub-headers. Each still opens
+        // a section, and the section begins with an opening marker so its lines stay unrendered.
+        String open  = com.eonmux.cadetcoder.ui.ProgramOutput.OPEN;
+        String close = com.eonmux.cadetcoder.ui.ProgramOutput.CLOSE;
+        ShellTranscript t = new ShellTranscript(100, 1000);
+        t.beginSegment(Kind.COMMAND, "agent build a thing");
+        t.append(open + "\n- before\n-- Step 1 of 3 --\n- after\n" + close + "\n");
+
+        List<Snapshot> snap = t.snapshot();
+        assertThat(snap).hasSize(2);
+        assertThat(linesOf(snap.get(0))).containsExactly(open, "- before");
+        assertThat(snap.get(1).title()).isEqualTo("Step 1 of 3");
+        assertThat(linesOf(snap.get(1))).containsExactly(open, "-- Step 1 of 3 --", "- after", close);
+    }
+
+    @Test
     public void subheaderInsideCommandOpensASection() {
         ShellTranscript t = new ShellTranscript(100, 1000);
         t.beginSegment(Kind.COMMAND, "agent build a thing");

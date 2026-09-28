@@ -610,9 +610,10 @@ because together they keep a run's structure visible.
 2. `printIteration` prints a blank line above the marker. That blank line
    separates one turn from the next.
 3. `printOutputBlock` indents what a command printed and adds no marker. The
-   text already carries the markers of the command that printed it. A block that
-   holds a Markdown fence is marked on every line instead, so no fence can pair
-   with a later one and swallow what follows.
+   text already carries the markers of the command that printed it. In the
+   shell, the block is sent as program output (see below). Elsewhere, a block
+   that holds a Markdown fence is marked on every line instead, so no fence can
+   pair with a later one and swallow what follows.
 4. A step's stated reason goes on a continuation line of its announcement and
    never on a line of its own. A step's outcome is marked as a success or a
    warning. Between them, a run's marked lines are its structure and its status,
@@ -628,6 +629,30 @@ output. `CollapsedOutput.hiding` writes them around the run's bookkeeping:
 
 A step that FAILED keeps its record on screen. That record is marked as a
 status, so that one column can be scanned for the place a run went wrong.
+
+`ui/ProgramOutput` defines two more markers. They wrap what a program printed or
+what a file holds, and `MarkdownRenderer` reads nothing between them as
+Markdown. The shell renders a result as Markdown because the model writes its
+answers in Markdown. A program does not: in `git diff` output a line that starts
+with `-` or `+` is a removed or an added line, and read as Markdown both became
+the same bullet. A line inside the run that carries one of the tool's own
+markers keeps its style. These write program output through `ProgramOutput`:
+
+- `printOutputBlock`, which covers a step's output and `job output`;
+- `bash`, `diff`, the git status in `commit`, `context show` and
+  `notebookread`;
+- the lines of a file in `read` and `multiread`, and the matching lines in
+  `grep`;
+- the echo of a step's captured output in `ActionRun` and `AgentCommand`.
+
+A command that prints line by line opens a run with `ProgramOutput.begin()` and
+closes it with `ProgramOutput.end(...)` in a `finally` block. A code block that
+a model left open ends at either marker.
+
+Both marker pairs follow the same rules. They are printed only when
+`CollapsedOutput.isSupported()`, so neither a plain console nor output collected
+for the model ever sees them. `CollapsedOutput.strip` removes both from what is
+logged. `ShellTranscript` opens no section inside either run.
 
 `commands/ShellTranscript.routeCompleteLine` stops the filing of a sub-header as
 a new section while a collapsed run is open. A command prints sub-headers of its

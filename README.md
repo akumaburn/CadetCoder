@@ -972,6 +972,10 @@ stays on screen with a note that says how many lines follow it. A step's own
 diagnostics lead its output, and a failure explained by a number is no
 explanation.
 
+The shell renders the model's answers as Markdown. It shows what a program
+printed exactly as printed, so a `git diff` keeps its `-` and `+` lines and a
+shell comment does not become a heading.
+
 This is a console setting. A hidden output never changes what the model
 receives. CadetCoder still feeds the captured text into the next prompt, and
 still writes it to the debug and session logs.

@@ -165,6 +165,9 @@ public final class CollapsedOutput {
     /**
      * Text with the marker lines taken out, for anything that stores or forwards it.
      *
+     * <p>Removes the markers of {@link ProgramOutput} as well. Both kinds are display control, and
+     * a log or a prompt has no use for either.</p>
+     *
      * @param text the text as it was printed
      * @return the same text without the markers
      */
@@ -178,7 +181,7 @@ public final class CollapsedOutput {
             int end  = text.indexOf('\n', at);
             int stop = end < 0 ? text.length() : end;
             String line = text.substring(at, stop);
-            if (!isMarker(line)) {
+            if (!isMarker(line) && !ProgramOutput.isMarker(line)) {
                 kept.append(line);
                 if (end >= 0) {
                     kept.append('\n');

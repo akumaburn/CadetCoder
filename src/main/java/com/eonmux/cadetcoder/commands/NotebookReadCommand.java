@@ -2,6 +2,7 @@ package com.eonmux.cadetcoder.commands;
 
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
+import com.eonmux.cadetcoder.ui.ProgramOutput;
 import com.eonmux.cadetcoder.ui.UnifiedOutput;
 import com.eonmux.cadetcoder.util.FilePathResolver;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -185,7 +186,7 @@ public class NotebookReadCommand extends LoggingCommandSupport implements Comman
                 } else {
                     UnifiedOutput.println("Code:");
                 }
-                UnifiedOutput.println(sourceText);
+                ProgramOutput.println(sourceText);
             }
         }
 
@@ -233,7 +234,7 @@ public class NotebookReadCommand extends LoggingCommandSupport implements Comman
             case "stream":
                 JsonNode text = output.get("text");
                 if (text != null) {
-                    UnifiedOutput.print(extractText(text));
+                    ProgramOutput.print(extractText(text));
                 }
                 break;
 
@@ -243,7 +244,7 @@ public class NotebookReadCommand extends LoggingCommandSupport implements Comman
                 if (data != null) {
                     // Prefer plain text
                     if (data.has("text/plain")) {
-                        UnifiedOutput.println(extractText(data.get("text/plain")));
+                        ProgramOutput.println(extractText(data.get("text/plain")));
                     } else if (data.has("text/html")) {
                         UnifiedOutput.println("[HTML Output - content omitted]");
                     } else if (data.has("image/png")) {
