@@ -15,6 +15,14 @@ ask providers for zero data retention by default.
 Build it with `mvn clean package -DskipTests`. The jar lands at
 `target/CadetCoder-1.0-SNAPSHOT.jar`.
 
+![A session in the CadetCoder interactive shell. The user lists and searches a
+small Java project, then asks in plain English why it crashes. The model reads
+the code, fixes the method, asks for approval to compile and run it, and
+reports the result.](assets/tour.gif)
+
+The tour runs a local model. The waits for the model play at up to three times
+normal speed.
+
 ## Contents
 
 - [Requirements](#requirements)
@@ -1834,6 +1842,9 @@ which is Apache 2.0; `NOTICE`, which records what the shaded jar bundles and
 under what terms; and `licenses/`, which holds the full text of every bundled
 licence that is not Apache 2.0. All three are packaged into the jar under
 `META-INF`.
+
+`assets/` holds the tour at the top of this page. It is not packaged into the
+jar.
 
 ## Further documentation
 
