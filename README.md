@@ -1455,14 +1455,21 @@ These are the settings the code actually consults.
   agent run: the question is drawn on the screen rather than filed into the
   step's transcript, and the answer comes from the shell's input line. `auto`
   asks the model instead, in a separate request that is shown one command and
-  told to allow ordinary development work. It answers `ALLOW: <why>` or
-  `DENY: <why>`, and anything else — a refusal to answer, an error, an
-  unreachable provider — is read as a refusal. Choose `auto` only if you accept
-  that a model approves commands without you. It suits a long run whose
-  commands are routine, and workers need it, because nobody can answer a
-  worker's question. Where nobody can be reached the command is blocked, and
-  the message names this setting. Neither mode can approve what the screens
-  below refuse outright. Set it for one run with `-Dcadet.commandApproval=auto`.
+  told to allow ordinary development work. When the command is a plain run of
+  a script with `python`, `node`, `ruby`, `perl` or a shell, such as
+  `python3 tool.py`, `bash build.sh` or `./deploy.sh`, optionally after
+  `cd /path &&`, the request also shows the script, so the model judges what
+  the script does. A script outside the project, a
+  credential file, a file that is not text, and any line of another shape are
+  judged from the line alone. A script over 20,000 characters is cut there.
+  The model answers `ALLOW: <why>` or `DENY: <why>`, and anything else — a
+  refusal to answer, an error, an unreachable provider — is read as a refusal.
+  Choose `auto` only if you accept that a model approves commands without you.
+  It suits a long run whose commands are routine, and workers need it,
+  because nobody can answer a worker's question. Where nobody can be reached
+  the command is blocked, and the message names this setting. Neither mode
+  can approve what the screens below refuse outright. Set it for one run with
+  `-Dcadet.commandApproval=auto`.
 
 A model cannot change your saved setup. When a model asks for them,
 CadetCoder refuses these commands:

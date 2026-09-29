@@ -1182,6 +1182,41 @@ asks the model, in a request of its own. Anything but `ALLOW:` or `DENY:` as the
 first thing the model says is read as a refusal, so a model that deliberates out
 loud gives no consent.
 
+The model is also shown the script a command runs, where the line makes the
+script certain. `security/ProgramFiles` names it only for a line of this
+shape:
+
+```text
+[cd DIR &&] PROGRAM [options] SCRIPT [arguments] [> FILE] [2>&1] [| READER ...]
+```
+
+- `PROGRAM` is `python`, `node`, `ruby` or `perl` and `SCRIPT` has one of its
+  extensions, as in `python3 tool.py`, or a shell and any file, or the script
+  is run by its path. Interpreters that load code named in a configuration
+  file, such as `bun`, are not on the list.
+- `DIR` is absolute or starts with `./`, and exists.
+- `READER` is `head`, `tail`, `grep`, `wc` or `cat`.
+- The line holds no expansion, pattern, substitution, `~`, `;`, `<`, `..`,
+  parenthesis, backslash or line break, and no `&` except that `&&` and `2>&1`.
+- Each option before the script is on the program's short list of options that
+  take no value, load no code and change no directory, such as `python3 -u` and
+  `bash -euo pipefail`.
+- No redirection writes into the script under any name, as a hard link would.
+- `PATH` holds only absolute directories.
+
+For any other line the model sees the line alone. A shell line can change a
+file before it runs it, or run a different file, in more ways than a reader of
+the line can follow, so the list is closed.
+
+`ai/CommandFiles` shows the script only when its real path, through any link,
+lies inside the project, whatever `security.allowOutsideProject` says. It also
+applies the credential and file rules `read` applies, and reads at most what it
+shows: 20,000 characters. A file with a NUL byte or a zip archive's end record
+is not text, because Python runs a zip archive named `.py` by the
+`__main__.py` inside it. The script sits between two lines that carry a random
+value for this one request, so it cannot close its own block and address the
+model as the tool. Its name is printed with control characters replaced.
+
 In `manual` mode, `CommandApproval.askThePerson` asks inside
 `OutputCapture.outsideCapture`. An agent step runs with its output collected so
 the model can read it. A question printed into that collection would go into the
