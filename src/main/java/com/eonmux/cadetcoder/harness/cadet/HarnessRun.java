@@ -83,6 +83,8 @@ public final class HarnessRun {
      *
      * @param request what was asked for
      * @return what it came to, and where the evidence for that is
+     * @throws RunCutShort when the run ends on an exception, such as a model request that failed
+     *                     or was interrupted; it carries the record and the exception
      */
     public RunOutcome on(RunRequest request) {
         if (request == null) {
@@ -96,9 +98,14 @@ public final class HarnessRun {
         ToolSession session = ToolSession.open(world, record.directory(),
                                                new Budget(request.limits()),
                                                CommitPolicy.standard());
-        RunResult result = new Harness(session, reasoners, HarnessLimits.standard(), watch, stop,
-                                       new CadetSignals(request.task()))
-                .run();
+        RunResult result;
+        try {
+            result = new Harness(session, reasoners, HarnessLimits.standard(), watch, stop,
+                                 new CadetSignals(request.task()))
+                    .run();
+        } catch (RuntimeException failure) {
+            throw new RunCutShort(record, failure);
+        }
         record.describe(summary.completed(result));
         return new RunOutcome(result, record);
     }

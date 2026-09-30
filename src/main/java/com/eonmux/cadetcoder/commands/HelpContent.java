@@ -86,7 +86,7 @@ public final class HelpContent {
 
     static {
         GROUPS.put("Ask the AI", List.of("chat", "edit", "agent", "loop", "loopfresh",
-                                        "workers", "runs", "plan"));
+                                        "workers", "resume", "runs", "plan"));
         GROUPS.put("Read and write files",
                    List.of("read", "multiread", "write", "multiedit", "ls", "stat",
                            "diff", "patch", "notebookread", "notebookedit"));
@@ -276,7 +276,7 @@ public final class HelpContent {
                 new Entry("Esc", "Back out: a prompt, select mode, a selection, a focused result, "
                                  + "then the line being typed"),
                 new Entry("F1", "Toggle this help"),
-                new Entry("F2", "Interrupt the running command"),
+                new Entry("F2", "Interrupt the running command; /resume carries it on"),
                 new Entry("F3", "Print recent command history"),
                 new Entry("F4", "Select mode (the mouse selects; clicks do not open a result)"),
                 new Entry("F5", "List every worker and every job; Enter opens the picked line"),

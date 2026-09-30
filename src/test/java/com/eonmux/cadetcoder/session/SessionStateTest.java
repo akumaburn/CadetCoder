@@ -60,7 +60,7 @@ public class SessionStateTest {
 
         assertThat(properties).containsExactlyInAnyOrder(
                 "sessionId", "createdAt", "lastModified",
-                "conversationHistory", "todoList", "transcript");
+                "conversationHistory", "todoList", "transcript", "resumePoint");
     }
 
     @Test

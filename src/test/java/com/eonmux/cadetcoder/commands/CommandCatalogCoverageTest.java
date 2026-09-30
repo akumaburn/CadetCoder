@@ -52,6 +52,8 @@ public class CommandCatalogCoverageTest {
             Map.entry("prompt", "manages prompt templates, a user-facing concern"),
             Map.entry("push", "publishes to a remote and is not reversible"),
             Map.entry("quit", "ends the user's session"),
+            Map.entry("resume", "carries on a run the user interrupted, which starts a model "
+                                + "loop of its own; ModelDispatch refuses it"),
             Map.entry("runs", "reads the harness records, which are kept outside what a run "
                               + "observes; an agent able to read its own ledger mid-run "
                               + "would be observing its own writing"),

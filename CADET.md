@@ -272,6 +272,10 @@ that never arrived, which tells the two apart. So a provider that cuts the
 account off part way through a loop stops the loop. The passes left do not fail
 in a few seconds and count as done.
 
+A pass the user interrupted is not counted as done. The loop saves the pass it
+was on and what the pass had done, and `resume` carries that pass on; see
+[Resume points](#resume-points).
+
 A pass the provider cut short after it did work is reported with its iterations
 and is not counted among the passes left unrun. `LoopCommand.cutShort` says "did
 no work" only of a pass that never reached the model.
@@ -743,7 +747,7 @@ prompt the user cannot read.
 asked. A question nobody is shown is not a question, and an unanswered
 confirmation is denied, so the exchange would only cancel the step.
 `InteractivePrompts.carrying` also carries the scope across a thread handover,
-and `ThreadHandover` applies it alongside the other three.
+and `ThreadHandover` applies it alongside the other four.
 
 Every interruptible command runs on a thread of its own. Without the carried
 scope, that thread would read the `cadet.interactive` property, which is true
@@ -914,6 +918,79 @@ still separable there from the prompt they are rendered into. A record in
 `AIManager` would store the whole rendered transcript and grow quadratically.
 CadetCoder drops consecutive duplicates, because a retried turn records the same
 text again.
+
+### Resume points
+
+`session/ResumePoint` is where an interrupted run stopped. `SessionState` keeps
+one per session, so it survives an exit, `--continue` and `session resume`.
+`commands/ResumeCommand` starts the same command again from it.
+
+Runs nest: each pass of a loop is a chat, and a chat's model can start workers.
+`resume/ResumeScope` marks each run on its thread, and `ThreadHandover` carries
+the mark to the thread that runs a command. When a run ends on
+`ExitCode.INTERRUPTED`, it reports its point with `ResumeScope.stopped`. A
+chat, agent or loop that ends on `ExitCode.UNREACHABLE` reports one too, but
+only when it did some work, so that a failed first request does not replace an
+older point. Only the outermost
+run saves the session's point. A run inside it hands its point to the run
+around it, which is how a loop keeps the progress of the pass it was on. A
+worker saves nothing, because the workers run it belongs to saves the point.
+
+Each command reports what a resume needs:
+
+- `ChatCommand` reports its request, the transcript the executor held, and
+  `uberChecksPassed`. `IterativeExecutor.contextAtEnd()` gives it the context
+  the run ended with. `IterativeExecutor.ownTranscript` drops the restored
+  session entries. It matches them in order, because a folded transcript can
+  keep session entries on both sides of the fold's summary entry.
+  `ResumeTranscript.bounded` keeps the latest 60,000 characters.
+- `AgentCommand` reports the directory of the harness record, or the classic
+  loop's actions and `uberChecksPassed`. `AgentResumeNote` turns that into text
+  that follows the task, because the harness builds every request from the
+  task. `HarnessRun` throws `RunCutShort` when a model request fails or is
+  interrupted, so the record reaches the point in that case too. A resumed
+  agent also reports `earlier`: the work of the attempts before it, which a new
+  harness record does not hold.
+- `LoopCommand` reports the pass it was on, the passes asked for, the
+  iterations so far, what the last finished pass said, and the point of the
+  interrupted pass.
+- `WorkersCommand` reports the workers of an earlier attempt that finished. The
+  scope adds the state of every workers run the run started.
+
+`ResumeScope.workersStarted` notes each workers run on the outermost scope. An
+interrupt of that run cancels them, because nothing else stops a worker: it is
+an agent on a pool thread. Jobs are not stopped. The scope records the running
+jobs and the session's timers in the point.
+
+Before it saves, the outermost scope passes every text of the point through
+`SecretRedactor`. `ResumeBriefing` compares a running job's command in its
+redacted form. The scope drops the save when another outermost scope opened
+after it, or when the session changed. A scope a worker opens is not counted,
+because a worker's pool thread has no scope around it. An interrupted command
+gets two seconds to end before the shell takes the next command, so a save can
+arrive after the user moved on.
+
+`IterativeCommand.priorTranscript()` seeds a resumed run's transcript, so every
+turn shows what the interrupted run did. `ChatCommand` also puts it in the first
+request, which the executor does not build.
+
+`ResumeBriefing.restore` tells the resumed run what its interrupted run left
+in the background. A job is still running only when this process holds a job
+with the same id and the same redacted command. Timers live only in memory.
+The point records which process holds them in `process`, and
+`SessionManager.saveSession` refreshes them while that process runs. A point
+from another process, or from a session opened again, has its timers set
+again. `loadSessionById` clears `process`, because leaving a session cancels
+its timers.
+
+`ResumeCommand` checks that the run can start before it starts it, and keeps
+the point when it cannot. It clears the point when the resumed run ends by
+itself. After `ExitCode.INTERRUPTED` or `ExitCode.UNREACHABLE` it leaves the
+point alone, because the run saved a new one or did nothing that replaces it.
+`resume` is in `ModelDispatch.STARTS_A_LOOP`.
+
+Only the interactive shell saves resume points. A one-shot command's `Ctrl+C`
+ends the process before any run can report where it stopped.
 
 ### Providers and credentials
 

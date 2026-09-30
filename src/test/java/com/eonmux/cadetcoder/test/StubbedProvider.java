@@ -51,6 +51,40 @@ public final class StubbedProvider implements AutoCloseable {
     }
 
     /**
+     * Installs a provider that gives these replies in order until the user interrupts, at request
+     * number {@code stoppedAt}.
+     *
+     * <p>That request behaves as a request cut off by F2 does: the interrupt is asked for, and the
+     * request fails as stopped before the model answered.</p>
+     *
+     * @param stoppedAt which request is interrupted, counting from 1
+     * @param replies   what the model says before then, in order; at least one
+     * @return the installed stub, which must be closed
+     */
+    public static StubbedProvider interruptedAt(int stoppedAt, String... replies) {
+        Recorder recorder = new Recorder(replies == null ? List.of() : Arrays.asList(replies), null);
+        recorder.stoppedAt = stoppedAt;
+        return install(recorder);
+    }
+
+    /**
+     * Installs a provider that gives these replies in order until request number {@code failedAt},
+     * which the provider refuses.
+     *
+     * <p>The refusal is one that no retry can change, a revoked key, so no wait or question stands
+     * between the failure and the end of the run.</p>
+     *
+     * @param failedAt which request fails, counting from 1
+     * @param replies  what the model says before then, in order; at least one
+     * @return the installed stub, which must be closed
+     */
+    public static StubbedProvider refusingAt(int failedAt, String... replies) {
+        Recorder recorder = new Recorder(replies == null ? List.of() : Arrays.asList(replies), null);
+        recorder.refusedAt = failedAt;
+        return install(recorder);
+    }
+
+    /**
      * Installs a provider whose every call fails, the way an unreachable one does.
      *
      * @param why what the failure says
@@ -136,6 +170,8 @@ public final class StubbedProvider implements AutoCloseable {
         private final List<String>      replies;
         private final RuntimeException  failure;
         private final List<PromptData>  asked = new ArrayList<>();
+        private       int               stoppedAt;
+        private       int               refusedAt;
 
         private Recorder(List<String> replies, RuntimeException failure) {
             this.replies = replies;
@@ -145,6 +181,17 @@ public final class StubbedProvider implements AutoCloseable {
         @Override
         public String complete(PromptData promptData, Map<String, Object> parameters) {
             asked.add(promptData);
+            if (asked.size() == stoppedAt) {
+                com.eonmux.cadetcoder.InterruptSignal.request();
+                throw com.eonmux.cadetcoder.net.LLMException.stopped(null, getModelName(), null,
+                                                                     null);
+            }
+            if (asked.size() == refusedAt) {
+                throw new com.eonmux.cadetcoder.net.LLMException(
+                        com.eonmux.cadetcoder.net.LLMException.Kind.AUTH,
+                        "The provider refused the key.", null, getModelName(), null, 401, null,
+                        null, null);
+            }
             if (failure != null) {
                 throw failure;
             }

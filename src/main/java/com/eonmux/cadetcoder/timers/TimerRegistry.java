@@ -118,6 +118,24 @@ public final class TimerRegistry {
     }
 
     /**
+     * The timers the person's session has set, whichever thread asks.
+     *
+     * <p>{@link #active()} answers for the calling thread's scope. The session is saved from
+     * threads that belong to no scope of their own, such as the one that runs when the program
+     * exits, and what it records are the timers of the conversation the session holds.</p>
+     *
+     * @return them, soonest due first; empty when none are set
+     */
+    public static List<AgentTimer> inSession() {
+        synchronized (LOCK) {
+            List<AgentTimer> sorted = new ArrayList<>(timers.getOrDefault(TimerScope.SESSION,
+                                                                          List.of()));
+            sorted.sort(Comparator.comparing(AgentTimer::dueAt));
+            return List.copyOf(sorted);
+        }
+    }
+
+    /**
      * Stops one timer.
      *
      * @param id the id it was given when it was set

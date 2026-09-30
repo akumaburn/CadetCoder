@@ -34,6 +34,7 @@ normal speed.
 - [Timers](#timers)
 - [Background jobs](#background-jobs)
 - [Uber mode](#uber-mode)
+- [Resume an interrupted run](#resume-an-interrupted-run)
 - [Read the output](#read-the-output)
 - [Command output](#command-output)
 - [How commands are dispatched](#how-commands-are-dispatched)
@@ -720,8 +721,9 @@ In the shell, `Tab` steps through the workers. It shows each worker's output as
 it arrives, whether or not that worker has finished. The header bar counts them
 off, as in `2/5 workers done`. CadetCoder collects a worker's output per worker
 rather than streams it, so without that counter the bar would sit unchanged for
-minutes, which reads exactly like a hang. `F2` stops a run, and what had
-finished is still there to inspect.
+minutes, which reads exactly like a hang. `F2` stops the run and its workers.
+What had finished is still there to inspect, and `/resume` runs again only the
+tasks that did not finish.
 
 ## Timers
 
@@ -897,6 +899,58 @@ survives the session. The shell's header bar says `uber` while it is on,
 because a mode nobody can see is a run that will not stop when you expect it
 to. CadetCoder deliberately does not offer uber mode to the model as a command
 it can run.
+
+## Resume an interrupted run
+
+`F2` stops a run. `/resume` carries it on from where it stopped.
+
+```text
+/resume
+```
+
+A new request such as `continue` starts a new run, and a new run knows nothing
+of the one before it. An interrupted run holds more than its request: the
+actions it took, the pass of a loop it was on, and how many of uber mode's
+questions its work had passed. When you interrupt a `chat`, `agent`, `loop`,
+`loopfresh` or `workers` run in the interactive shell, CadetCoder saves that
+state as the session's resume point. `/resume` starts the same command again
+from it. CadetCoder also saves the point when the provider stops answering
+after the run did some work.
+
+Outside the shell, `Ctrl+C` ends the CadetCoder process at once, so a one-shot
+command such as `cadet chat "..."` saves no resume point.
+
+| Run | What `/resume` does |
+|---|---|
+| `chat` | Shows the model the request and the conversation of the interrupted run, and keeps the count of uber mode's questions that the work had passed. |
+| `agent` | Starts the agent with the same options. The task carries the notes and the last ledger entries from the record of the interrupted run. |
+| `loop`, `loopfresh` | Carries on the pass that was interrupted, with what that pass had done, and then runs the passes left. |
+| `workers` | Keeps the results of the workers that finished, and runs again only the tasks that did not finish. |
+
+An interrupt also stops the workers that the run started, including workers
+that a chat started in the background. The resumed run learns which of them
+finished. Jobs keep going after an interrupt, because a server or a watch build
+is often what the work needs. The resumed run learns which jobs ran.
+
+CadetCoder keeps the resume point in the session file, so it survives an exit,
+`--continue` and `/session resume`. CadetCoder stops every job when it exits,
+and timers live only in memory. A run resumed after a restart therefore learns
+that its jobs stopped, and CadetCoder sets its timers again. Before it saves
+the point, CadetCoder replaces any API key or token it finds in the saved text
+with `***redacted***`.
+
+| Command | What it does |
+|---|---|
+| `resume` | Carry on the run you last interrupted. |
+| `resume show` | Say what `resume` would carry on, and start nothing. |
+| `resume discard` | Forget the resume point. |
+
+There is one resume point per session. A second interrupted run replaces it.
+A resumed run that ends by itself clears it, whether its work succeeded or
+failed. A resumed run that cannot reach the model saves a new point with its
+new work. A resume that cannot start keeps the point: for example, when other
+workers still run. CadetCoder resumes a run only in the project it worked in.
+The model cannot run `resume`.
 
 ## Read the output
 
@@ -1162,6 +1216,7 @@ interactive shell.
 | `runs [show\|ledger] [<name>] [<n>]` | OK | Reads what past runs recorded. Read-only: a record is written once and never revised. |
 | `loop [--times=<n>] <goal>` | AI | Runs the goal as a full run, 100 times by default and at most 1,000. Each pass sees the tail of what the last pass said. Every pass runs, whatever the model says about the goal. Ctrl-C ends it. A provider that cannot be reached stops it with exit code 69. |
 | `loopfresh [--times=<n>] <goal>` | AI | The same as `loop`, except that each pass is told nothing about what the last one said. |
+| `resume [show\|discard]` | AI | Carries on the chat, agent, loop or workers run you last interrupted. See [Resume an interrupted run](#resume-an-interrupted-run). |
 | `plan [description...] [-e]` | OK | Enters plan mode. `done`, `exit` or a blank line finishes it, as does `-e`. CadetCoder records the plan into the session and asks whether to run it. |
 | `refactor <file> [instructions...]` | AI | AI-assisted refactor of one file. |
 | `analyze <file>` | AI | Reports what the file does and where its problems are. |
@@ -1483,7 +1538,8 @@ CadetCoder refuses these commands:
 - `theme set`, `theme apply` and `theme reset`.
 
 A model also may not clear the console with `clear`, start or switch sessions,
-or start a nested `chat`, `agent`, `loop` or `loopfresh` inside its own run.
+or start a nested `chat`, `agent`, `loop`, `loopfresh` or `resume` inside its
+own run.
 
 A model may still read settings, for example with `config <name>`,
 `login status`, `ubermode status` or `models context`.
@@ -1622,7 +1678,7 @@ paste. Non-UTF-8 terminals get ASCII glyph substitutes.
 | `Ctrl+Left` / `Ctrl+Right` | Move the cursor a word at a time. Some terminals send `Alt` instead of `Ctrl`; both work, as do `Alt+B` and `Alt+F`. |
 | `Ctrl+W` | Delete the word behind the cursor |
 | `F1` | Help overlay, holding the same reference `/help` prints. Arrows, `PgUp` and `PgDn` scroll it; any other key closes it. |
-| `F2` / `Ctrl+C` | Interrupt the running command |
+| `F2` / `Ctrl+C` | Interrupt the running command. `/resume` carries on an interrupted chat, agent, loop or workers run. |
 | `F3` | Print recent history |
 | `F4` | Select mode: the mouse selects, and a click does not open the result under it |
 | `Ctrl+U` | Clear the line being typed |

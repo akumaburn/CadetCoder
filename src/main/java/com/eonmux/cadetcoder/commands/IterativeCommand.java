@@ -81,6 +81,18 @@ public interface IterativeCommand extends CommandRegistry.Command {
     }
 
     /**
+     * The conversation a resumed run carries on from.
+     *
+     * <p>The executor starts a run's transcript with it, so every turn of a resumed run is shown what
+     * the interrupted run did. Empty for a run that was not resumed.</p>
+     *
+     * @return the earlier run's transcript, oldest first
+     */
+    default java.util.List<String> priorTranscript() {
+        return java.util.List.of();
+    }
+
+    /**
      * Represents the result of a command step execution.
      *
      * <p>Null-handling contract:

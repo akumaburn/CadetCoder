@@ -1,6 +1,7 @@
 package com.eonmux.cadetcoder.commands;
 
 import com.eonmux.cadetcoder.CommandRegistry;
+import com.eonmux.cadetcoder.ExitCode;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.AIManager;
 import com.eonmux.cadetcoder.ai.PromptData;
@@ -10,6 +11,9 @@ import com.eonmux.cadetcoder.ai.parsing.ResponseParsingEngine;
 import com.eonmux.cadetcoder.ai.parsing.ParsedResponse;
 import com.eonmux.cadetcoder.prompts.TemplatePromptBuilder;
 import com.eonmux.cadetcoder.net.LLMException;
+import com.eonmux.cadetcoder.resume.ResumeScope;
+import com.eonmux.cadetcoder.resume.ResumeTranscript;
+import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.session.SessionManager;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Parameters;
@@ -34,6 +38,12 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
     private final ActionRecovery recovery;
     private final ActionRun      run;
     private final ChatFollowUp   followUp;
+
+    /** The interrupted chat this run carries on, or {@code null} for a new one. */
+    private ResumePoint.Chat resumed;
+
+    /** What the resumed run is told about how it was interrupted and what it left running. */
+    private String resumeBriefing = "";
 
     public ChatCommand() {
         // Initialize commandRegistry lazily to avoid circular dependency
@@ -71,6 +81,13 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                     // decision from stopping command output being read as a question.
                     return new StepResult(false, "No request provided", context.toMap(),
                             "What would you like me to help you with today?");
+                }
+
+                if (resumed != null) {
+                    context.setUserRequest(resumed.request());
+                    context.setUberChecksPassed(resumed.uberChecksPassed());
+                    context.setStep("analyze_request");
+                    return executeStep(args, context.toMap(), null);
                 }
 
                 String userRequest = String.join(" ", parts);
@@ -532,6 +549,10 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
 
         prompt.append("User request: ").append(userRequest).append("\n\n");
 
+        if (resumed != null) {
+            prompt.append(resumedWork()).append("\n");
+        }
+
         // Add context about the current project
         prompt.append("Current directory: ").append(System.getProperty("user.dir")).append("\n");
 
@@ -547,6 +568,67 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
 
         prompt.append("\nDetermine the appropriate actions to fulfill this request.");
         return prompt.toString();
+    }
+
+    /**
+     * What an interrupted run did, for the first request of the run that carries it on.
+     *
+     * <p>Later requests are built from the transcript, which starts with the same record; see
+     * {@link #priorTranscript()}. The first one is built here, so it has to be told as well.</p>
+     */
+    private String resumedWork() {
+        StringBuilder work = new StringBuilder(interruptionNote()).append("\n");
+        if (!resumed.transcript().isEmpty()) {
+            work.append("What that run did, oldest first:\n");
+            for (String entry : resumed.transcript()) {
+                work.append(entry).append("\n");
+            }
+        }
+        return work.append("Carry on from where it stopped. Do not repeat work that is already ")
+                   .append("done; check the project where you are not sure.\n").toString();
+    }
+
+    /** Tells a resumed run that it carries on an earlier one. */
+    private static final String RESUMED_NOTE =
+            "The user interrupted an earlier run at this request, and has now resumed it.";
+
+    /** @return the line that tells a resumed run it was interrupted, and what it left running */
+    private String interruptionNote() {
+        return resumeBriefing.isBlank() ? RESUMED_NOTE
+                                        : RESUMED_NOTE + "\n" + resumeBriefing.strip();
+    }
+
+    /** @return the transcript entry that tells a resumed run it was interrupted */
+    private String interruptionEntry() {
+        return "System: " + interruptionNote();
+    }
+
+    @Override
+    public List<String> priorTranscript() {
+        if (resumed == null) {
+            return List.of();
+        }
+        List<String> prior = new ArrayList<>(resumed.transcript());
+        prior.add(interruptionEntry());
+        return prior;
+    }
+
+    /**
+     * Carries on an interrupted chat.
+     *
+     * @param chat     what the chat had done
+     * @param briefing what the run is told about the interrupt, beyond its own record
+     * @return the exit code
+     */
+    public int resume(ResumePoint.Chat chat, String briefing) {
+        this.resumed        = chat;
+        this.resumeBriefing = briefing == null ? "" : briefing;
+        try {
+            return execute(new String[] {chat.request()});
+        } finally {
+            this.resumed        = null;
+            this.resumeBriefing = "";
+        }
     }
 
     /**
@@ -632,7 +714,17 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
             IterativeExecutor executor = new IterativeExecutor();
 
             logStep("Starting iterative execution");
-            int result = executor.execute(this, args);
+            int result;
+            try (ResumeScope scope = ResumeScope.open()) {
+                result = executor.execute(this, args);
+                ResumePoint.Chat done = progress(executor.contextAtEnd(), args);
+                // Cut off from the model, the run is worth carrying on only when it did something.
+                if (result == ExitCode.INTERRUPTED
+                    || result == ExitCode.UNREACHABLE && !done.transcript().isEmpty()) {
+                    scope.stopped(ResumePoint.chat(
+                            args == null ? List.of() : Arrays.asList(args), done));
+                }
+            }
 
             completeCommandLogging(result);
             return result;
@@ -643,6 +735,32 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
         }
     }
 
+
+    /**
+     * What this chat had done when it stopped.
+     *
+     * <p>A resumed run's transcript holds what it was told about the interrupt it carries on:
+     * which jobs still ran, and the ids its timers were set again under. That is out of date at the
+     * next resume, which tells its own, so only the line saying the run was resumed is kept.</p>
+     *
+     * @param context the context its run ended with
+     * @param args    its arguments
+     * @return its request, the run's own conversation, and uber mode's count of passed questions
+     */
+    private ResumePoint.Chat progress(Map<String, Object> context, String[] args) {
+        ChatContext chat    = ChatContext.fromMap(context, this);
+        String      request = chat.getUserRequest() != null ? chat.getUserRequest()
+                                                            : String.join(" ", args == null
+                                                                               ? new String[0]
+                                                                               : args);
+        String       told       = resumed == null ? null : interruptionEntry();
+        List<String> transcript = new ArrayList<>();
+        for (String entry : IterativeExecutor.ownTranscript(context)) {
+            transcript.add(entry.equals(told) ? "System: " + RESUMED_NOTE : entry);
+        }
+        return new ResumePoint.Chat(request, ResumeTranscript.bounded(transcript),
+                                    chat.getUberChecksPassed());
+    }
 
     @Override
     public String getUsage() {

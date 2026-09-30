@@ -50,6 +50,17 @@ public class IterativeExecutor {
     private final int            maxIterations;
     private final UserAsk        ask;
 
+    /**
+     * The context key for the session's conversation that the run's transcript starts with.
+     *
+     * <p>A run in a restored session starts with the session's conversation, which the session
+     * keeps for itself. What comes after it is the run's own; see {@link #ownTranscript}.</p>
+     */
+    static final String SESSION_TRANSCRIPT = "sessionTranscript";
+
+    /** The context of the last run, as it stood when the run ended. */
+    private Map<String, Object> lastContext = Map.of();
+
     public IterativeExecutor() {
         this.aiManager      = AIManager.getInstance();
         this.isInteractive  = InteractivePrompts.isOn();
@@ -94,6 +105,7 @@ public class IterativeExecutor {
 
         try {
             Map<String, Object> context          = newContext(command, args);
+            lastContext = context;
             String              initialPrompt    = command.getInitialPrompt(args);
             boolean             hasInitialPrompt = initialPrompt != null && !initialPrompt.isEmpty();
 
@@ -152,8 +164,55 @@ public class IterativeExecutor {
         context.put("command", command.getClass().getSimpleName());
         context.put("args", args != null ? Arrays.asList(args) : new ArrayList<>());
         context.put("startTime", System.currentTimeMillis());
-        context.put("conversationHistory", new ArrayList<>(ResumedContext.forCurrentSession()));
+        List<String> session = ResumedContext.forCurrentSession();
+        context.put(SESSION_TRANSCRIPT, List.copyOf(session));
+        List<String> history = new ArrayList<>(session);
+        history.addAll(command.priorTranscript());
+        context.put("conversationHistory", history);
         return context;
+    }
+
+    /**
+     * The run's own part of its transcript: every entry but those of the session's conversation.
+     *
+     * <h2>Why the entries are matched in order</h2>
+     *
+     * <p>A long transcript is folded: a head of it is kept, the middle becomes one summary entry,
+     * and a tail is kept. The session's entries can then sit on both sides of that entry, so no
+     * single index marks where the run's own entries start. The session's entries are matched in
+     * the order they were given, wherever the fold left them, and all else is the run's own.</p>
+     *
+     * @param context the context a run ended with
+     * @return the run's own entries, oldest first
+     */
+    public static List<String> ownTranscript(Map<String, Object> context) {
+        List<String> own = new ArrayList<>();
+        if (!(context.get("conversationHistory") instanceof List<?> history)) {
+            return own;
+        }
+        List<?> session = context.get(SESSION_TRANSCRIPT) instanceof List<?> given ? given : List.of();
+        int     next    = 0;
+        for (Object entry : history) {
+            int at = session.subList(next, session.size()).indexOf(entry);
+            if (at >= 0) {
+                next += at + 1;
+            } else {
+                own.add(String.valueOf(entry));
+            }
+        }
+        return own;
+    }
+
+    /**
+     * The context the last run ended with.
+     *
+     * <p>Read by a command that saves where its run stopped. The executor owns the run's transcript,
+     * and the command's own state is in the same map.</p>
+     *
+     * @return the context, empty before any run
+     */
+    public Map<String, Object> contextAtEnd() {
+        return lastContext;
     }
 
     /**
@@ -256,6 +315,9 @@ public class IterativeExecutor {
                     : takeAStep(command, args, context, llmResponse);
 
             if (stepResult.isComplete()) {
+                // Kept, so the context the run ended with holds what its last step knew.
+                context.putAll(stepResult.getContext());
+                context.put("conversationHistory", transcript);
                 return finish(stepResult);
             }
 

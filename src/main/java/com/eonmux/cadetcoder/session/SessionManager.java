@@ -247,7 +247,56 @@ public class SessionManager {
             return;
         }
         captureTranscript();
+        captureTimers();
         persist();
+    }
+
+    /**
+     * Records the session's timers in the resume point, as they stand now.
+     *
+     * <p>The point is saved when the run is interrupted, and the timers can change after that: the
+     * user can cancel one, and one can fire its last time. The point has to describe the timers as
+     * they are when the process exits, because those are the ones a resume in a new process sets
+     * again. A point from another process is left alone: this process holds none of its timers, and
+     * reading them here would empty it.</p>
+     */
+    private void captureTimers() {
+        ResumePoint point = sessionState.getResumePoint();
+        if (point == null || !point.timersAreSet()) {
+            return;
+        }
+        sessionState.setResumePoint(point.withTimers(ResumePoint.Timer.inSession()));
+    }
+
+    /**
+     * Where the last interrupted run stopped.
+     *
+     * @return the resume point, or empty when there is nothing to resume
+     */
+    public synchronized java.util.Optional<ResumePoint> getResumePoint() {
+        return java.util.Optional.ofNullable(sessionState.getResumePoint());
+    }
+
+    /**
+     * Keeps where an interrupted run stopped, in place of any earlier one, and saves the session.
+     *
+     * <p>Saved at once rather than at the next exchange. The point is for a run the user stopped,
+     * and the next thing the user does may be to close the terminal.</p>
+     *
+     * @param point where the run stopped
+     */
+    public synchronized void setResumePoint(ResumePoint point) {
+        sessionState.setResumePoint(point);
+        saveSession();
+    }
+
+    /** Forgets the resume point, and saves the session. */
+    public synchronized void clearResumePoint() {
+        if (sessionState.getResumePoint() == null) {
+            return;
+        }
+        sessionState.setResumePoint(null);
+        saveSession();
     }
 
     /** Takes a copy of the shell's scrollback, if there is a shell to take it from. */
@@ -521,6 +570,7 @@ public class SessionManager {
         snapshot.setConversationHistory(new ArrayList<>(sessionState.getConversationHistory()));
         snapshot.setTodoList(new ArrayList<>(sessionState.getTodoList()));
         snapshot.setTranscript(new ArrayList<>(sessionState.getTranscript()));
+        snapshot.setResumePoint(sessionState.getResumePoint());
         return snapshot;
     }
 
@@ -728,6 +778,11 @@ public class SessionManager {
             stopTheOldSessionsReminders();
             sessionState = loaded;
             resumed      = true;
+            // Leaving a session stopped its timers, and they were never set for this one, so a
+            // resume has to set them again whichever process saved the point.
+            if (loaded.getResumePoint() != null) {
+                loaded.setResumePoint(loaded.getResumePoint().withTimersNotSet());
+            }
             persist(); // make it the current session
         }
         OutputFormatter.printSuccess("Loaded session: " + sessionId);

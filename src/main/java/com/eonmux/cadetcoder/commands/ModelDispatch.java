@@ -45,7 +45,7 @@ public final class ModelDispatch {
      * runs out, and every one of those endings is worse than being told no.</p>
      */
     private static final Set<String> STARTS_A_LOOP =
-            Set.of("agent", "chat", "loop", "loopfresh");
+            Set.of("agent", "chat", "loop", "loopfresh", "resume");
 
     /** What a shell reads as a command that refused to run. */
     public static final int REFUSED = 1;

@@ -7,6 +7,8 @@ import com.eonmux.cadetcoder.agents.WorkerPool;
 import com.eonmux.cadetcoder.agents.WorkerRegistry;
 import com.eonmux.cadetcoder.agents.WorkerResult;
 import com.eonmux.cadetcoder.agents.WorkerTask;
+import com.eonmux.cadetcoder.resume.ResumeScope;
+import com.eonmux.cadetcoder.session.ResumePoint;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,6 +58,18 @@ public class WorkersCommand implements CommandRegistry.InterruptibleCommand {
 
     /** Per-worker step budget when none is given; keeps one worker from consuming the whole run. */
     private static final int DEFAULT_WORKER_STEPS = 12;
+
+    /** What each worker runs its task with. */
+    private final WorkerPool.WorkerRunner runner;
+
+    public WorkersCommand() {
+        this(WorkerPool.agentRunner());
+    }
+
+    /** @param runner what each worker runs its task with */
+    WorkersCommand(WorkerPool.WorkerRunner runner) {
+        this.runner = runner;
+    }
 
     @Override
     public int execute(String[] args) {
@@ -211,9 +225,8 @@ public class WorkersCommand implements CommandRegistry.InterruptibleCommand {
         return 0;
     }
 
-    /** Starts one worker per task and reports each as it finishes. */
     /**
-     * Starts a run.
+     * Starts one worker per task, and reports each as it finishes.
      *
      * @param wait whether to block until every worker has finished
      */
@@ -267,34 +280,140 @@ public class WorkersCommand implements CommandRegistry.InterruptibleCommand {
             OutputFormatter.printInfo("  " + task.name() + "  " + task.label());
         }
 
-        com.eonmux.cadetcoder.agents.WorkerRun run = WorkerPool.start(
-                tasks, parsed.maxSteps, wait ? WorkersCommand::report : null, WorkerPool.agentRunner());
-        WorkerRegistry.setActive(run);
+        try (ResumeScope scope = ResumeScope.open()) {
+            com.eonmux.cadetcoder.agents.WorkerRun run = WorkerPool.start(
+                    tasks, parsed.maxSteps, wait ? WorkersCommand::report : null, runner);
+            WorkerRegistry.setActive(run);
+            ResumeScope.workersStarted(run);
 
-        if (!wait) {
-            OutputFormatter.printInfo("Started. They run in the background: `workers status` to see"
-                                      + " how far along they are, `workers wait` to block until they"
-                                      + " finish, `workers stop` to end them.");
-            return 0;
+            if (!wait) {
+                OutputFormatter.printInfo("Started. They run in the background: `workers status` to"
+                                          + " see how far along they are, `workers wait` to block"
+                                          + " until they finish, `workers stop` to end them.");
+                return 0;
+            }
+            return awaitAll(run, List.of(), args, scope);
         }
+    }
 
+    /**
+     * Waits for a run's workers, and stops them when the user interrupts.
+     *
+     * <p>The workers are stopped with the command. Left running, they spend model requests on a
+     * run the user stopped, and nothing reports what they did. Which of them
+     * finished is saved as the session's resume point, so {@code resume} runs only the others.</p>
+     *
+     * @param run       the run
+     * @param kept      what finished in an earlier, interrupted run of the same tasks
+     * @param arguments the command's arguments, for the resume point
+     * @param scope     the run's scope
+     * @return the exit code
+     */
+    private int awaitAll(com.eonmux.cadetcoder.agents.WorkerRun run, List<WorkerResult> kept,
+                         String[] arguments, ResumeScope scope) {
         run.await(0);
         List<WorkerResult> results = run.results();
 
         if (interrupted()) {
-            // A stopped run's partial results stay reachable through the registry, which holds the
-            // run itself: `workers show <n>` still works afterwards.
-            //
+            run.cancel();
+            List<ResumePoint.Worker> finished = new ArrayList<>();
+            for (WorkerResult result : kept) {
+                finished.add(new ResumePoint.Worker(result.task().index(), result.task().task(),
+                                                    result.status().name(), result.output()));
+            }
             // Counted against what was STARTED, and counting every worker that reached an ending
             // however it ended. `results` holds only the workers that finished -- the coordinator
             // stops recording once the run is cancelled -- so "N of results.size()" compared the
-            // finished against themselves: four workers stopped after two had finished reported
-            // "2 of 2 had finished", and the two that were abandoned appeared nowhere.
-            OutputFormatter.printWarning("Worker run stopped; " + results.size() + " of "
-                                         + run.total() + " had finished.");
+            // finished against themselves.
+            OutputFormatter.printWarning("Worker run stopped; " + (kept.size() + results.size())
+                                         + " of " + (kept.size() + run.total())
+                                         + " had finished.");
+            scope.stopped(ResumePoint.workers(java.util.Arrays.asList(arguments), finished));
             return ExitCode.INTERRUPTED;
         }
-        return summarise(results, run.total(), run.elapsedMillis());
+        List<WorkerResult> all = new ArrayList<>(kept);
+        all.addAll(results);
+        all.sort(java.util.Comparator.comparingInt(result -> result.task().index()));
+        if (!kept.isEmpty()) {
+            // One record of the whole run, so `workers show <n>` reaches the kept workers too.
+            WorkerRegistry.setActive(com.eonmux.cadetcoder.agents.WorkerRun.finished(all));
+        }
+        return summarise(all, kept.size() + run.total(), run.elapsedMillis());
+    }
+
+    /**
+     * Runs again the tasks of an interrupted workers run that did not finish.
+     *
+     * <p>A worker that finished keeps its result, and is reported with the new ones. A worker that
+     * was stopped part-way starts its task again, told what it printed before it was stopped. The
+     * caller checks first that no other workers run; see {@link ResumeCommand}.</p>
+     *
+     * @param workers   how far each worker got
+     * @param arguments the command's arguments as it was started with them
+     * @param briefing  what else each worker is told about the interrupt, or empty
+     * @return the exit code
+     */
+    public int resume(List<ResumePoint.Worker> workers, List<String> arguments, String briefing) {
+        Parsed parsed = Parsed.of(arguments.toArray(new String[0]));
+        List<WorkerResult> kept  = new ArrayList<>();
+        List<WorkerTask>   tasks = new ArrayList<>();
+        for (ResumePoint.Worker worker : workers) {
+            if (worker.finished()) {
+                kept.add(new WorkerResult(new WorkerTask(worker.index(), worker.task(),
+                                                         parsed.briefing),
+                                          WorkerResult.Status.valueOf(worker.status()),
+                                          worker.output(), 0, null));
+            } else {
+                tasks.add(new WorkerTask(worker.index(), worker.task(),
+                                         againBriefing(parsed.briefing, worker, briefing)));
+            }
+        }
+        OutputFormatter.printHeader("Resuming " + tasks.size() + " of " + workers.size()
+                                    + " workers");
+        for (WorkerResult result : kept) {
+            OutputFormatter.printInfo("  kept     " + result.task().name() + "  "
+                                      + result.task().label());
+        }
+        for (WorkerTask task : tasks) {
+            OutputFormatter.printInfo("  again    " + task.name() + "  " + task.label());
+        }
+        for (WorkerResult result : kept) {
+            report(result);
+        }
+        if (tasks.isEmpty()) {
+            return summarise(kept, kept.size(), 0);
+        }
+        String[] args = arguments.toArray(new String[0]);
+        try (ResumeScope scope = ResumeScope.open()) {
+            com.eonmux.cadetcoder.agents.WorkerRun run = WorkerPool.start(
+                    tasks, parsed.maxSteps, WorkersCommand::report, runner);
+            WorkerRegistry.setActive(run);
+            ResumeScope.workersStarted(run);
+            return awaitAll(run, kept, args, scope);
+        }
+    }
+
+    /**
+     * The briefing a worker gets when its task is run again.
+     *
+     * @param shared   the run's shared briefing
+     * @param worker   how far the worker got before
+     * @param briefing what else it is told about the interrupt, or empty
+     * @return the briefing
+     */
+    private static String againBriefing(String shared, ResumePoint.Worker worker, String briefing) {
+        StringBuilder text = new StringBuilder(shared);
+        text.append(text.length() == 0 ? "" : "\n\n")
+            .append("The user interrupted an earlier run of this task, and has now resumed it.");
+        if (briefing != null && !briefing.isBlank()) {
+            text.append('\n').append(briefing.strip());
+        }
+        if (!worker.output().isEmpty()) {
+            text.append("\nWhat the earlier worker printed before it was stopped:\n")
+                .append(String.join("\n", worker.output()));
+        }
+        return text.append("\nCarry on from where it stopped. Do not repeat work that is already ")
+                   .append("done; check the project where you are not sure.").toString();
     }
 
     /**

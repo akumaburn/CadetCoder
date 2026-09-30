@@ -7,12 +7,15 @@ import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.UberMode;
 import com.eonmux.cadetcoder.harness.budget.BudgetLimits;
 import com.eonmux.cadetcoder.harness.cadet.HarnessRun;
+import com.eonmux.cadetcoder.harness.cadet.RunCutShort;
 import com.eonmux.cadetcoder.harness.cadet.RunOutcome;
 import com.eonmux.cadetcoder.harness.cadet.RunRequest;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.context.ContextEngine;
 import com.eonmux.cadetcoder.jobs.BackgroundJob;
 import com.eonmux.cadetcoder.jobs.JobNotice;
+import com.eonmux.cadetcoder.resume.ResumeScope;
+import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.timers.TimerNotice;
 import picocli.CommandLine.*;
 
@@ -52,6 +55,15 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
     private static final int                   MAX_AGENT_DEPTH = 1;
     private CommandRegistry.InterruptionContext interruptionContext;
 
+    /** The context key for the directory of the harness run's record. */
+    private static final String RUN_RECORD = "runRecord";
+
+    /** What this run is told about the interrupted run it carries on, or empty for a new run. */
+    private String resumeNote = "";
+
+    /** The interrupted run this run carries on, or {@code null} for a new run. */
+    private ResumePoint.Agent resumed;
+
     public void setCommandRegistry(CommandRegistry registry) {
         this.commandRegistry = registry;
     }
@@ -82,10 +94,17 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         RunRequest request = RunRequest.here(task)
                                        .checkedBy((String) context.get("goalCheck"))
                                        .spending(allowance);
-        RunOutcome outcome = underTheHarness(request,
-                                    Boolean.TRUE.equals(context.get("verboseMode")));
+        RunOutcome outcome;
+        try {
+            outcome = underTheHarness(request, Boolean.TRUE.equals(context.get("verboseMode")));
+        } catch (RunCutShort cut) {
+            // The record holds what the run did before it was cut short, which a resume needs.
+            context.put(RUN_RECORD, cut.record().directory().toString());
+            throw cut.failure();
+        }
 
         context.put("step", "harness_finished");
+        context.put(RUN_RECORD, outcome.record().directory().toString());
         // A run somebody called off is reported as taken back rather than as failed, so that the
         // whole command answers 130 whichever loop was driving it.
         if (outcome.exitCode() == RunOutcome.CALLED_OFF) {
@@ -173,11 +192,16 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
                                   "What task would you like the AI agent to complete?");
         }
 
-        context.put("task", invocation.taskDescription());
+        // A resumed run was confirmed when it was first started, and the resume asked for it again.
+        boolean resuming = !resumeNote.isEmpty();
+        context.put("task", invocation.taskDescription() + resumeNote);
         context.put("timeoutSec", invocation.timeoutSeconds());
         context.put("maxStepCount", invocation.maxSteps());
         context.put("verboseMode", invocation.verbose());
-        context.put("preconfirmed", invocation.preconfirmed());
+        context.put("preconfirmed", invocation.preconfirmed() || resuming);
+        if (resumed != null) {
+            context.put("uberChecksPassed", resumed.uberChecksPassed());
+        }
         context.put("classic", invocation.classic());
         context.put("goalCheck", invocation.goalCheck());
         context.put("budget", invocation.budget());
@@ -790,7 +814,16 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
 
             // Use iterative executor for better multi-step handling
             IterativeExecutor executor = new IterativeExecutor();
-            int result = executor.execute(this, args);
+            int result;
+            try (ResumeScope scope = ResumeScope.open()) {
+                result = executor.execute(this, args);
+                ResumePoint.Agent done = progress(executor.contextAtEnd());
+                // Cut off from the model, the run is worth carrying on only when it did something.
+                if (result == com.eonmux.cadetcoder.ExitCode.INTERRUPTED
+                    || result == com.eonmux.cadetcoder.ExitCode.UNREACHABLE && done.didSomething()) {
+                    scope.stopped(ResumePoint.agent(Arrays.asList(args), done));
+                }
+            }
 
             completeCommandLogging(result);
             return result;
@@ -800,6 +833,47 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
             return 1;
         } finally {
             AGENT_DEPTH.set(depth);
+        }
+    }
+
+    /**
+     * What this run had done when it stopped.
+     *
+     * @param context the context the run ended with
+     * @return the harness run's record, or the classic loop's actions, with what the attempts
+     *         before this one did when this run was a resume
+     */
+    private ResumePoint.Agent progress(Map<String, Object> context) {
+        String earlier = resumed == null ? null : AgentResumeNote.earlierWork(resumed);
+        int    passed  = context.get("uberChecksPassed") instanceof Integer count ? count : 0;
+        Object record  = context.get(RUN_RECORD);
+        if (record instanceof String directory) {
+            return new ResumePoint.Agent(directory, List.of(), earlier, passed);
+        }
+        AgentState state = context.get("agentState") instanceof AgentState classic ? classic : null;
+        return new ResumePoint.Agent(null, AgentResumeNote.actionsOf(state), earlier, passed);
+    }
+
+    /**
+     * Carries on an interrupted agent, with the options it was started with.
+     *
+     * <p>The task is what the run was asked for, followed by what the interrupted run did; see
+     * {@link AgentResumeNote}. The run is not confirmed again: it was when it was first started,
+     * and the resume asked for it once more.</p>
+     *
+     * @param agent     what the interrupted run left
+     * @param arguments its arguments as it was started with them
+     * @param briefing  what else the run is told about the interrupt, or empty
+     * @return the exit code
+     */
+    public int resume(ResumePoint.Agent agent, List<String> arguments, String briefing) {
+        resumeNote = AgentResumeNote.of(agent, briefing);
+        resumed    = agent;
+        try {
+            return execute(arguments.toArray(new String[0]));
+        } finally {
+            resumeNote = "";
+            resumed    = null;
         }
     }
 

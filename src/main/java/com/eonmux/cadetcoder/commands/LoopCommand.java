@@ -4,6 +4,8 @@ import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.ExitCode;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.OutageWait;
+import com.eonmux.cadetcoder.resume.ResumeScope;
+import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.timers.TimerInterval;
 import com.eonmux.cadetcoder.ui.OutputCapture;
 
@@ -11,7 +13,9 @@ import picocli.CommandLine.Command;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.ToIntFunction;
 
 /**
  * Works at one goal over and over, improving on what the last pass left.
@@ -123,31 +127,73 @@ public class LoopCommand extends LoggingCommandSupport
         startCommandLogging(name(), args);
         OutputFormatter.printHeader(options.times + " passes at: " + options.goal);
         OutputFormatter.printInfo("Ctrl-C ends it. Every pass runs; none of them decides to stop.");
+        return run(options, args, new ResumePoint.Loop(1, options.times, 0, null, null), "");
+    }
 
-        int    done       = 0;
-        int    iterations = 0;
-        String lastSaid   = null;
-        for (int pass = 1; pass <= options.times; pass++) {
-            if (shouldInterrupt()) {
-                OutputFormatter.printWarning("Stopped after " + done
-                                             + (done == 1 ? " pass, " : " passes, ")
-                                             + counted(iterations) + ".");
-                completeCommandLogging(ExitCode.INTERRUPTED);
-                return ExitCode.INTERRUPTED;
+    /**
+     * Carries on an interrupted loop from the pass it was on.
+     *
+     * @param loop      how far the loop had got
+     * @param arguments the loop's arguments as it was started with them
+     * @param briefing  what the resumed pass is told about the interrupt, beyond its own record
+     * @return the exit code
+     */
+    public int resume(ResumePoint.Loop loop, List<String> arguments, String briefing) {
+        String[] args    = arguments.toArray(new String[0]);
+        Options  options = Options.read(args);
+        if (options.refusal != null) {
+            OutputFormatter.printError("The interrupted loop cannot be read back: " + options.refusal);
+            return 1;
+        }
+        startCommandLogging(name(), args);
+        OutputFormatter.printHeader("Pass " + loop.pass() + " of " + options.times + " at: "
+                                    + options.goal);
+        return run(options, args, loop, briefing == null ? "" : briefing);
+    }
+
+    /**
+     * Runs the passes from where {@code from} says to start.
+     *
+     * <p>An interrupt ends the loop at once and saves where it stopped: the pass it was on, what
+     * that pass had done, and what the last finished pass said. A pass cut short is not counted as
+     * done, because {@code resume} carries it on.</p>
+     *
+     * @param options  what the loop was asked for
+     * @param args     its arguments, for the resume point
+     * @param from     the pass to start at, and what the loop knew there
+     * @param briefing what the first pass is told about an interrupt it carries on from, or empty
+     * @return the exit code
+     */
+    private int run(Options options, String[] args, ResumePoint.Loop from, String briefing) {
+        int    done       = from.pass() - 1;
+        int    iterations = from.iterations();
+        String lastSaid   = from.lastSaid();
+        try (ResumeScope scope = ResumeScope.open()) {
+            for (int pass = from.pass(); pass <= options.times; pass++) {
+                if (shouldInterrupt()) {
+                    return stopped(scope, args, new ResumePoint.Loop(
+                            pass, options.times, iterations, lastSaid, null), done);
+                }
+                OutputFormatter.printSubheader("Pass " + pass + " of " + options.times);
+                boolean resumingIt = pass == from.pass();
+                Pass ran = resumingIt && from.interruptedPass() != null
+                           ? resumedPass(from.interruptedPass(), pass, options.times, iterations,
+                                         briefing)
+                           : onePass(options.goal, pass, options.times, iterations, lastSaid,
+                                     resumingIt ? briefing : "");
+                ResumePoint.Loop here = new ResumePoint.Loop(
+                        pass, options.times, iterations + ran.iterations, lastSaid,
+                        scope.inner().map(ResumePoint::chat).orElse(null));
+                if (ran.reachedNoModel) {
+                    return reachedNoModel(scope, args, here, done, ran.iterations);
+                }
+                if (ran.interrupted) {
+                    return stopped(scope, args, here, done);
+                }
+                lastSaid    = ran.said;
+                iterations += ran.iterations;
+                done++;
             }
-            OutputFormatter.printSubheader("Pass " + pass + " of " + options.times);
-            Pass ran = onePass(options.goal, pass, options.times, iterations, lastSaid);
-            if (ran.reachedNoModel) {
-                OutputFormatter.printError(cutShort(pass, options.times, done, ran.iterations));
-                OutputFormatter.printInfo(
-                        "Start the loop again once the provider will answer. Earlier passes left "
-                        + "their work in the project, so a new loop carries on from it.");
-                completeCommandLogging(ExitCode.UNREACHABLE);
-                return ExitCode.UNREACHABLE;
-            }
-            lastSaid    = ran.said;
-            iterations += ran.iterations;
-            done++;
         }
 
         OutputFormatter.printSuccess("Finished " + done
@@ -155,6 +201,42 @@ public class LoopCommand extends LoggingCommandSupport
                                      + counted(iterations) + " at: " + options.goal);
         completeCommandLogging(0);
         return 0;
+    }
+
+    /**
+     * Ends an interrupted loop, and saves where it stopped.
+     *
+     * @return the interrupted exit code
+     */
+    private int stopped(ResumeScope scope, String[] args, ResumePoint.Loop where, int done) {
+        OutputFormatter.printWarning("Stopped after " + done
+                                     + (done == 1 ? " pass, " : " passes, ")
+                                     + counted(where.iterations()) + ".");
+        scope.stopped(ResumePoint.loop(name(), Arrays.asList(args), where));
+        completeCommandLogging(ExitCode.INTERRUPTED);
+        return ExitCode.INTERRUPTED;
+    }
+
+    /**
+     * Ends a loop whose pass could not reach the model, and saves where it stopped when there is
+     * work to carry on.
+     *
+     * <p>A loop cut off in its first pass, before the pass did anything, has nothing to carry on,
+     * and a resume point would only replace an earlier one.</p>
+     *
+     * @param inPass how many iterations the pass that could not reach the model ran
+     * @return the unreachable exit code
+     */
+    private int reachedNoModel(ResumeScope scope, String[] args, ResumePoint.Loop where, int done,
+                               int inPass) {
+        OutputFormatter.printError(cutShort(where.pass(), where.times(), done, inPass));
+        if (where.pass() > 1 || where.interruptedPass() != null) {
+            scope.stopped(ResumePoint.loop(name(), Arrays.asList(args), where));
+        } else {
+            OutputFormatter.printInfo("Start the loop again once the provider will answer.");
+        }
+        completeCommandLogging(ExitCode.UNREACHABLE);
+        return ExitCode.UNREACHABLE;
     }
 
     /**
@@ -170,17 +252,48 @@ public class LoopCommand extends LoggingCommandSupport
      * @param of       how many there are
      * @param before   how many iterations every earlier pass ran, in total
      * @param lastSaid what the previous pass ended by saying, or {@code null} for the first
-     * @return what this pass ended by saying, whether it ended without reaching the model, and how
-     *         many iterations it ran
+     * @param briefing what the pass is told about an interrupt it carries on from, or empty
+     * @return what this pass ended by saying, how it ended, and how many iterations it ran
      */
-    private Pass onePass(String goal, int pass, int of, int before, String lastSaid) {
+    private Pass onePass(String goal, int pass, int of, int before, String lastSaid,
+                         String briefing) {
+        String asked = request(goal, pass, of, lastSaid);
+        if (!briefing.isBlank()) {
+            asked += "\n\nThe user interrupted this loop before this pass started, and has now "
+                     + "resumed it.\n" + briefing.strip();
+        }
+        String request = asked;
+        return aPass(pass, of, before, chat -> chat.execute(new String[] {request}));
+    }
+
+    /**
+     * Carries on the pass an interrupt cut short.
+     *
+     * @param cut      what the pass had done
+     * @param pass     which pass it is, counting from 1
+     * @param of       how many there are
+     * @param before   how many iterations every earlier pass ran, in total
+     * @param briefing what the pass is told about the interrupt, beyond its own record
+     * @return what the pass ended by saying, how it ended, and how many iterations it ran
+     */
+    private Pass resumedPass(ResumePoint.Chat cut, int pass, int of, int before, String briefing) {
+        return aPass(pass, of, before, chat -> chat.resume(cut, briefing));
+    }
+
+    /**
+     * Runs one pass's conversation, showing and collecting what it prints.
+     *
+     * @param runs starts the conversation and answers its exit code
+     */
+    private Pass aPass(int pass, int of, int before,
+                       ToIntFunction<ChatCommand> runs) {
         List<String> said     = new ArrayList<>();
         int[]        exitCode = new int[1];
         int iterations = LoopPass.inPass(pass, of, before, () -> OutputCapture.collectAlongside(
                 said::add,
-                () -> exitCode[0] = passChat().execute(
-                        new String[] {request(goal, pass, of, lastSaid)})));
-        return new Pass(tailOf(said), exitCode[0] == ExitCode.UNREACHABLE, iterations);
+                () -> exitCode[0] = runs.applyAsInt(passChat())));
+        return new Pass(tailOf(said), exitCode[0] == ExitCode.UNREACHABLE,
+                        exitCode[0] == ExitCode.INTERRUPTED, iterations);
     }
 
     /**
@@ -314,9 +427,10 @@ public class LoopCommand extends LoggingCommandSupport
      *
      * @param said          what the pass ended by saying, or {@code null}
      * @param reachedNoModel whether the pass ended because no request could be made at all
+     * @param interrupted    whether the user interrupted the pass
      * @param iterations     how many turns the pass took, which the loop counts across all of them
      */
-    private record Pass(String said, boolean reachedNoModel, int iterations) {
+    private record Pass(String said, boolean reachedNoModel, boolean interrupted, int iterations) {
     }
 
     /** What a loop was asked to do, or why it cannot be. */

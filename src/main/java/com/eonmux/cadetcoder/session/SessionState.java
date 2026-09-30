@@ -49,6 +49,9 @@ public class SessionState {
      */
     private List<TranscriptEntry>          transcript;
 
+    /** Where the last interrupted run stopped, or {@code null} when there is nothing to resume. */
+    private ResumePoint                    resumePoint;
+
     public SessionState() {
     }
 
@@ -85,6 +88,15 @@ public class SessionState {
 
     public void setTodoList(List<TodoReadCommand.TodoItem> todoList) {
         this.todoList = todoList;
+    }
+
+    /** @return where the last interrupted run stopped, or {@code null} */
+    public ResumePoint getResumePoint() {
+        return resumePoint;
+    }
+
+    public void setResumePoint(ResumePoint resumePoint) {
+        this.resumePoint = resumePoint;
     }
 
     public String getSessionId() {

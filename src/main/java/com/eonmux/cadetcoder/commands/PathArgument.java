@@ -73,6 +73,8 @@ final class PathArgument {
         // same reason a worker's task description would be.
         Map.entry("loop", NONE),
         Map.entry("loopfresh", NONE),
+        // resume takes a sub-action word, and carries on a run from the session, not from a file.
+        Map.entry("resume", NONE),
         Map.entry("commit", NONE),
         Map.entry("clear", NONE),
         Map.entry("compact", NONE),

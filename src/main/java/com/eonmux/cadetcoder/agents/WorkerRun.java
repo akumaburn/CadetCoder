@@ -66,7 +66,7 @@ public final class WorkerRun {
      * @param results what the workers produced, in any order
      * @return a finished run over those results
      */
-    static WorkerRun finished(List<WorkerResult> results) {
+    public static WorkerRun finished(List<WorkerResult> results) {
         List<WorkerTask> tasks = new ArrayList<>(results.size());
         for (WorkerResult result : results) {
             tasks.add(result.task());
