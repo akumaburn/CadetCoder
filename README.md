@@ -17,8 +17,9 @@ Build it with `mvn clean package -DskipTests`. The jar lands at
 
 ![A session in the CadetCoder interactive shell. The user lists and searches a
 small Java project, then asks in plain English why it crashes. The model reads
-the code, fixes the method, asks for approval to compile and run it, and
-reports the result.](assets/tour.gif)
+the code and fixes the method. The user interrupts the run at its request to
+compile, and /resume carries the run on: the model compiles and runs the
+program with approval, and reports the result.](assets/tour.gif)
 
 The tour runs a local model. The waits for the model play at up to three times
 normal speed.
@@ -1393,7 +1394,7 @@ order. `baseDir` is written as an absolute path.
                  "autoCommitEnabled": false,
                  "commitMessageTemplate": "Auto-commit on {date}", "commitTrigger": "onChange",
                  "autoCommitIntervalMinutes": 60 },
-  "ui":        { "colorEnabled": true, "colorTheme": "matrix", "verbosityLevel": 1,
+  "ui":        { "colorEnabled": true, "colorTheme": "modern", "verbosityLevel": 1,
                  "interactivePrompts": true, "showCommandOutput": false },
   "performance": { "threads": 3, "parallelProcessing": true },
   "security":  { "allowRemoteExecution": false, "allowedCommands": [], "allowedActions": [],
@@ -1413,7 +1414,7 @@ order. `baseDir` is written as an absolute path.
 `ai.modelContextTokens` holds the input windows that `models context` sets,
 one per provider and model.
 
-Note three shipped defaults. `ui.colorTheme` is `matrix`.
+Note three shipped defaults. `ui.colorTheme` is `modern`.
 `security.allowOutsideProject` is `false`, so file commands work only inside
 the directory you start CadetCoder in. `security.commandApproval` is `manual`,
 so you approve each shell command yourself.
@@ -1748,8 +1749,8 @@ a pipe.
 
 ## Themes and templates
 
-CadetCoder ships 10 themes, all 24-bit truecolor: `matrix`, which is the
-default, `modern`, `default`, `solarized-dark`, `solarized-light`, `monokai`,
+CadetCoder ships 10 themes, all 24-bit truecolor: `modern`, which is the
+default, `matrix`, `default`, `solarized-dark`, `solarized-light`, `monokai`,
 `dracula`, `nord`, `gruvbox-dark` and `one-dark`.
 
 ```bash

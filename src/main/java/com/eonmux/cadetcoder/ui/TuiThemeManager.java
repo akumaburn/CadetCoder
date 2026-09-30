@@ -1,6 +1,7 @@
 package com.eonmux.cadetcoder.ui;
 
 import com.eonmux.cadetcoder.config.ConfigManager;
+import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 
 import dev.tamboui.style.Color;
@@ -31,7 +32,7 @@ import java.util.*;
 public class TuiThemeManager {
     private static final Map<String, TuiTheme> themes = new HashMap<>();
     /** The theme in force when nothing has been chosen, or when what was chosen is not a theme. */
-    public static final String DEFAULT_THEME = "modern";
+    public static final String DEFAULT_THEME = Configuration.UiConfig.DEFAULT_COLOR_THEME;
 
     private static TuiTheme currentTheme;
 

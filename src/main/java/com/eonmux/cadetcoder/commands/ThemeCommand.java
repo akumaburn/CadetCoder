@@ -388,10 +388,10 @@ public class ThemeCommand implements CommandRegistry.Command, Callable<Integer> 
     }
 
     /**
-     * Reset to default matrix theme
+     * Reset to the default theme.
      */
     private int resetToDefault() {
-        String defaultTheme = "matrix";
+        String defaultTheme = TuiThemeManager.DEFAULT_THEME;
         
         OutputFormatter.printInfo("Resetting to default theme: " + defaultTheme);
         

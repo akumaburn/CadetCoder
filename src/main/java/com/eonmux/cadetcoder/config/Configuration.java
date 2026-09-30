@@ -748,8 +748,11 @@ public class Configuration {
     }
 
     public static class UiConfig {
+        /** The theme a new configuration uses, and the one {@code theme reset} goes back to. */
+        public static final String DEFAULT_COLOR_THEME = "modern";
+
         private boolean colorEnabled       = true;
-        private String  colorTheme         = "matrix"; // Color theme name - matrix theme as default  
+        private String  colorTheme         = DEFAULT_COLOR_THEME;
         private int     verbosityLevel     = VERBOSITY.NORMAL.ordinal();
         private boolean interactivePrompts = true;
 

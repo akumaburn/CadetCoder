@@ -59,8 +59,7 @@ public class ColorThemeManager {
         createOneDarkTheme();
         createModernTheme();
 
-        // Set default theme to matrix
-        currentTheme = themes.get("matrix");
+        currentTheme = themes.get(TuiThemeManager.DEFAULT_THEME);
     }
 
     private static void createModernTheme() {
