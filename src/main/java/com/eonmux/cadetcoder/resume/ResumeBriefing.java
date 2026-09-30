@@ -37,6 +37,22 @@ import java.util.Optional;
  */
 public final class ResumeBriefing {
 
+    /**
+     * Tells a resumed run that the action the interrupt stopped may be run again.
+     *
+     * <p>The interrupted run recorded that action as stopped by the user, with the instruction not
+     * to retry it or work around it. That instruction holds while the stopped run goes on. The user
+     * resumed the work, so a resumed run that obeys it avoids the one step the work was on.</p>
+     */
+    public static final String STOPPED_IS_NOT_REFUSED =
+            "An action the interrupt stopped was not refused: run it again if the work still "
+            + "needs it.";
+
+    /** Closes what a resumed run is told about the run it carries on. */
+    public static final String CARRY_ON =
+            "Carry on from where it stopped. Do not repeat work that is already done; check the "
+            + "project where you are not sure.";
+
     private ResumeBriefing() {
     }
 

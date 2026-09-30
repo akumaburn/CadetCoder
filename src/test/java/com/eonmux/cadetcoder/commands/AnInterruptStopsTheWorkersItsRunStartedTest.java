@@ -6,6 +6,7 @@ import com.eonmux.cadetcoder.InterruptSignal;
 import com.eonmux.cadetcoder.agents.WorkerPool;
 import com.eonmux.cadetcoder.agents.WorkerRegistry;
 import com.eonmux.cadetcoder.agents.WorkerRun;
+import com.eonmux.cadetcoder.resume.ResumeBriefing;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.session.SessionManager;
@@ -133,7 +134,8 @@ public class AnInterruptStopsTheWorkersItsRunStartedTest {
         assertThat(ran).hasSize(1);
         assertThat(ran.get(0)).contains("held")
                               .contains("the shared briefing")
-                              .contains("read the retry code");
+                              .contains("read the retry code")
+                              .contains(ResumeBriefing.STOPPED_IS_NOT_REFUSED);
         assertThat(budgets).containsExactly(7);
         assertThat(output.getOutput()).contains("quick is done").contains("2 of 2 succeeded");
     }

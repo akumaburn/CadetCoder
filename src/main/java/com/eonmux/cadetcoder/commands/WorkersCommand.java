@@ -7,6 +7,7 @@ import com.eonmux.cadetcoder.agents.WorkerPool;
 import com.eonmux.cadetcoder.agents.WorkerRegistry;
 import com.eonmux.cadetcoder.agents.WorkerResult;
 import com.eonmux.cadetcoder.agents.WorkerTask;
+import com.eonmux.cadetcoder.resume.ResumeBriefing;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.session.ResumePoint;
 
@@ -412,8 +413,8 @@ public class WorkersCommand implements CommandRegistry.InterruptibleCommand {
             text.append("\nWhat the earlier worker printed before it was stopped:\n")
                 .append(String.join("\n", worker.output()));
         }
-        return text.append("\nCarry on from where it stopped. Do not repeat work that is already ")
-                   .append("done; check the project where you are not sure.").toString();
+        return text.append('\n').append(ResumeBriefing.STOPPED_IS_NOT_REFUSED)
+                   .append('\n').append(ResumeBriefing.CARRY_ON).toString();
     }
 
     /**

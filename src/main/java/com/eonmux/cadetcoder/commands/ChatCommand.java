@@ -11,6 +11,7 @@ import com.eonmux.cadetcoder.ai.parsing.ResponseParsingEngine;
 import com.eonmux.cadetcoder.ai.parsing.ParsedResponse;
 import com.eonmux.cadetcoder.prompts.TemplatePromptBuilder;
 import com.eonmux.cadetcoder.net.LLMException;
+import com.eonmux.cadetcoder.resume.ResumeBriefing;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.resume.ResumeTranscript;
 import com.eonmux.cadetcoder.session.ResumePoint;
@@ -584,13 +585,13 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                 work.append(entry).append("\n");
             }
         }
-        return work.append("Carry on from where it stopped. Do not repeat work that is already ")
-                   .append("done; check the project where you are not sure.\n").toString();
+        return work.append(ResumeBriefing.CARRY_ON).append("\n").toString();
     }
 
     /** Tells a resumed run that it carries on an earlier one. */
     private static final String RESUMED_NOTE =
-            "The user interrupted an earlier run at this request, and has now resumed it.";
+            "The user interrupted an earlier run at this request, and has now resumed it. "
+            + ResumeBriefing.STOPPED_IS_NOT_REFUSED;
 
     /** @return the line that tells a resumed run it was interrupted, and what it left running */
     private String interruptionNote() {

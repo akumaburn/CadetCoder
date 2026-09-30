@@ -2,6 +2,7 @@ package com.eonmux.cadetcoder.commands;
 
 import com.eonmux.cadetcoder.harness.cadet.RecordedRun;
 import com.eonmux.cadetcoder.harness.ledger.Transition;
+import com.eonmux.cadetcoder.resume.ResumeBriefing;
 import com.eonmux.cadetcoder.session.ResumePoint;
 
 import java.nio.file.Paths;
@@ -59,8 +60,8 @@ final class AgentResumeNote {
                 .append('\n');
         }
         note.append(workOf(agent));
-        return note.append("Carry on from where it stopped. Do not repeat work that is already ")
-                   .append("done; check the project where you are not sure.").toString();
+        return note.append(ResumeBriefing.STOPPED_IS_NOT_REFUSED).append('\n')
+                   .append(ResumeBriefing.CARRY_ON).toString();
     }
 
     /**

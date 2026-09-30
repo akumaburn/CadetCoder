@@ -11,6 +11,7 @@ import com.eonmux.cadetcoder.harness.cadet.RunRequest;
 import com.eonmux.cadetcoder.harness.loop.RunResult;
 import com.eonmux.cadetcoder.harness.loop.RunStatus;
 import com.eonmux.cadetcoder.net.LLMException;
+import com.eonmux.cadetcoder.resume.ResumeBriefing;
 import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.session.SessionManager;
 import com.eonmux.cadetcoder.test.StubbedProvider;
@@ -97,7 +98,11 @@ public class AnInterruptedRunIsResumedWhereItStoppedTest {
             String first = userPrompts(resumed).get(0);
             assertThat(first).contains("tidy the notes")
                              .contains("Command executed: ls")
-                             .contains("The user interrupted");
+                             .contains("The user interrupted")
+                             .as("an action the interrupt stopped may be run again")
+                             .contains(ResumeBriefing.STOPPED_IS_NOT_REFUSED);
+            assertThat(userPrompts(resumed)).allMatch(
+                    prompt -> prompt.contains(ResumeBriefing.STOPPED_IS_NOT_REFUSED));
         }
         assertThat(SessionManager.getInstance().getResumePoint())
                 .as("a run that was carried on to its end leaves nothing to resume")
@@ -272,7 +277,8 @@ public class AnInterruptedRunIsResumedWhereItStoppedTest {
         assertThat(exit).isEqualTo(ExitCode.OK);
         assertThat(asked.get().task()).startsWith("fix the parser")
                                       .contains("The bug is in Parser.readHeader.")
-                                      .contains("The user interrupted");
+                                      .contains("The user interrupted")
+                                      .contains(ResumeBriefing.STOPPED_IS_NOT_REFUSED);
         assertThat(asked.get().limits().maxDeliberations())
                 .as("the options the run was started with still apply")
                 .isEqualTo(9);
