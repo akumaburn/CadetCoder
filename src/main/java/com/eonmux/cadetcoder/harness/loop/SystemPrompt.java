@@ -99,13 +99,19 @@ public final class SystemPrompt {
         if (env == null) {
             throw new IllegalArgumentException("a prompt describes a world, so there has to be one");
         }
-        return String.join(System.lineSeparator() + System.lineSeparator(),
+        String body = String.join(System.lineSeparator() + System.lineSeparator(),
                            PREAMBLE,
                            section("YOUR TOOLS", ToolCatalog.render()),
                            CallFormat.describe(),
                            section("THE WORLD MODEL CONTRACT", contract()),
                            LanguageGuide.render(),
                            section("THE ENVIRONMENT", env.describe()));
+        // The environment's reference material leads, ahead of the harness's own words, because it
+        // is the part a provider may already hold from another prompt; see Environment.reference.
+        String reference = env.reference();
+        return reference == null || reference.isBlank()
+                ? body
+                : reference + System.lineSeparator() + System.lineSeparator() + body;
     }
 
     /** The harness's own words, which are the only part of the prompt nothing else derives. */

@@ -1,7 +1,6 @@
 package com.eonmux.cadetcoder.commands;
 
 import com.eonmux.cadetcoder.OutputFormatter;
-import com.eonmux.cadetcoder.agents.WorkerPool;
 import com.eonmux.cadetcoder.ai.UberMode;
 import com.eonmux.cadetcoder.context.ContextEngine;
 import com.eonmux.cadetcoder.git.RepositoryContext;
@@ -18,8 +17,8 @@ import java.util.function.Consumer;
  *
  * <h2>Why the system prompt has a fallback</h2>
  *
- * <p>The maintained template carries the capabilities, the command catalog, the step-by-step loop
- * and both reply formats. If the template engine cannot render it for any reason, an agent with no
+ * <p>The command list opens the prompt, ahead of the template; see {@link CommandCatalog}. The
+ * maintained template carries the capabilities, the step-by-step loop and both reply formats. If the template engine cannot render it for any reason, an agent with no
  * system prompt at all would propose replies nothing can read; the inline prompt is the smallest
  * thing that still states the format, so a template failure costs quality rather than the run.</p>
  */
@@ -44,10 +43,10 @@ final class AgentPrompts {
                     .with("timeout_minutes", timeoutSeconds > AgentOptions.UNLIMITED
                             ? String.valueOf(Math.max(1, timeoutSeconds / 60))
                             : "no limit")
-                    .with("available_commands", catalog())
+                    .with("available_commands", CommandCatalog.LISTED_ABOVE)
                     .build();
             if (rendered != null && !rendered.isBlank()) {
-                return UberMode.applyTo(rendered);
+                return UberMode.applyTo(opening() + "\n\n" + rendered);
             }
         } catch (Exception e) {
             warn.accept("Falling back to inline agent prompt: " + e.getMessage());
@@ -58,24 +57,22 @@ final class AgentPrompts {
     }
 
     /**
-     * The command list this agent is shown.
+     * The command list this agent's prompt opens with.
      *
      * <p>A worker is itself an agent, so it renders the same prompt -- and would be told it can spawn
      * workers, which it cannot. Offering a capability that is refused on use costs a turn and teaches
      * nothing, so the entry is withheld from the only agents that may not use it.</p>
      *
-     * @return the catalog appropriate to this agent
+     * @return the list, under its heading
      */
-    static String catalog() {
-        return WorkerPool.insideWorker()
-                ? CommandCatalog.workerCommands()
-                : CommandCatalog.coreCommands();
+    private static String opening() {
+        return CommandCatalog.promptBlock(CommandCatalog.forThisAgent());
     }
 
     /** Minimal self-contained agent prompt used only if the agent template cannot be rendered. */
     private static String fallbackSystem() {
-        return "You are an AI agent that completes tasks one step at a time using these commands:\n"
-               + catalog() + "\n\n"
+        return opening() + "\n\n"
+               + "You are an AI agent that completes tasks one step at a time using these commands.\n\n"
                + "Each step, emit exactly ONE action block:\n"
                + "ACTION_START\nCOMMAND: <command>\nARGS: <arguments>\nREASON: <why>\nACTION_END\n\n"
                + "You will be shown the command's output before the next step. Never repeat the same "

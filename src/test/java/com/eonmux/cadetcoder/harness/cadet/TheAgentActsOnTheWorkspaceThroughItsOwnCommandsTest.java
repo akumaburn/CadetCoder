@@ -229,13 +229,16 @@ class TheAgentActsOnTheWorkspaceThroughItsOwnCommandsTest {
     @Test
     void whatIsDescribedIsTheTaskAndTheInterfaceRatherThanWhatEachCommandDoesToTheWorkspace(
             @TempDir Path workspace) {
-        String described = environment(new CommandRegistry(), workspace, "verify").describe();
+        CommandEnvironment world = environment(new CommandRegistry(), workspace, "verify");
+        String described = world.describe();
 
         assertThat(described).contains(TASK);
         assertThat(described).contains("\"command\"");
         assertThat(described).contains("tree_hash");
-        assertThat(described).contains("- read <filepath>");
         assertThat(described).contains("verify");
+        // The list opens the prompt instead, where the other loops' prompts have it too.
+        assertThat(described).doesNotContain("- read <filepath>");
+        assertThat(world.reference()).contains("- read <filepath>");
     }
 
     @Test

@@ -310,6 +310,17 @@ reply. Before this, turn 2 shared only the system prompt with turn 1.
 `EachChatTurnRepeatsTheTurnBeforeItTest` checks that every chat request starts
 with the whole of the previous one.
 
+Every loop's own system prompt opens with `CommandCatalog.promptBlock`, the
+command list under `THE COMMANDS`, so the text after the principles is the same
+in `chat`, the classic agent loop and the harness. A worker gets
+`CommandCatalog.workerCommands()`, through `CommandCatalog.forThisAgent()`. The
+harness takes the block from `Environment.reference()`, which `SystemPrompt`
+renders first. `CommandEnvironment.describe()` ends with the task, and
+`agent.md` ends with Task Context, so different runs share everything before
+the task. The shipped `chat.md` and `agent.md` have no `{{available_commands}}`
+slot. A custom template that still has one gets a sentence that points to the
+list. `EveryLoopOpensWithTheSameCommandListTest` pins the order.
+
 `ai/SystemPromptProvider` loads the `system` prompt template, and
 `AIManager.complete` puts it in front of whatever system prompt the caller
 supplied. Every completion passes through that one point, so a command cannot

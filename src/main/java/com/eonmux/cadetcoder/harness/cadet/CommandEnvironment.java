@@ -183,9 +183,11 @@ public final class CommandEnvironment implements Environment {
 
     @Override
     public String describe() {
+        // The task comes last: everything before it is the same for every run, so a later run, or
+        // a worker started beside this one, can be served all of it from a provider's cache.
         return "The world is a workspace of files. You act on it by running one CadetCoder command"
-               + " at a time -- the same commands a person types at the prompt."
-               + paragraph("TASK", task)
+               + " at a time -- the same commands a person types at the prompt. They are listed"
+               + " under " + CommandCatalog.HEADING + " near the start of this prompt."
                + paragraph("AN ACTION", "  {\"" + COMMAND + "\": \"read\", \"args\": [\"pom.xml\"]}"
                                         + System.lineSeparator()
                                         + "The whole line in one string is read the same way:"
@@ -193,7 +195,19 @@ public final class CommandEnvironment implements Environment {
                                         + "  {\"" + COMMAND + "\": \"read pom.xml\"}")
                + paragraph("AN OBSERVATION", observationShape())
                + paragraph("SUCCESS", success())
-               + paragraph("THE COMMANDS", CommandCatalog.coreCommands());
+               + paragraph("TASK", task);
+    }
+
+    /**
+     * The command list, which opens the prompt.
+     *
+     * <p>The chat and classic agent prompts open with the same text, so a provider can serve it from
+     * its cache whichever ran last. A worker's list leaves out {@code workers}, which a worker may
+     * not use.</p>
+     */
+    @Override
+    public String reference() {
+        return CommandCatalog.promptBlock(CommandCatalog.forThisAgent());
     }
 
     /**

@@ -534,15 +534,16 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
     }
 
     private String buildSystemPrompt() {
-        // Available commands come from the shared CommandCatalog so the chat and agent paths always
-        // advertise the same, accurate set of options to the model.
+        // The prompt opens with the shared command list, which the agent loops open with too, so a
+        // provider can serve it from its cache whichever loop ran last. See CommandCatalog.
         //
         // The uber-mode directive is appended last so it qualifies the completion contract above it
         // rather than being qualified by it. It is empty unless the mode is on, so the prompt -- and
         // with it the cacheable prefix every turn of a run shares -- is untouched the rest of the
         // time.
-        return UberMode.applyTo(TemplatePromptBuilder.chat()
-                                    .with("available_commands", CommandCatalog.coreCommands())
+        return UberMode.applyTo(CommandCatalog.promptBlock(CommandCatalog.forThisAgent()) + "\n\n"
+                                + TemplatePromptBuilder.chat()
+                                    .with("available_commands", CommandCatalog.LISTED_ABOVE)
                                     .build());
     }
 

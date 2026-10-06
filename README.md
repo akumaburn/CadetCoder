@@ -347,6 +347,12 @@ takes its name and context window from the catalog, from any of the four GLM
 entries. Without a key, or when the platform does not answer, the list comes
 from the catalog.
 
+Z.ai caches prompts without being asked. In measurements, it reused a cached
+prompt only up to one of two points: the end of an earlier prompt, or the point
+where two earlier prompts diverged. A conversation reuses each turn's prompt in
+the next turn. A new run reuses the opening it shares with two or more earlier
+runs.
+
 A request to a balance endpoint is charged to the balance even when the account
 has a Coding Plan. With an empty balance the platform answers HTTP 429 with
 code 1113. CadetCoder does not retry that answer. It reports the code and names
@@ -485,6 +491,13 @@ serve the shared leading prefix from cache and process only the tail.
 Measured over an eight-turn conversation, the reusable region beyond the system
 prompt grows by roughly one exchange per turn. The system prompt is stable for
 the whole run.
+
+Every loop's system prompt opens with the same text: the operating principles,
+then the command list under `THE COMMANDS`. That covers `chat`, `agent`,
+`agent --classic` and every worker. Anything that differs between runs, such as
+the task, comes after it, at the end of the system prompt. A provider can
+therefore reuse the opening from a run of another kind, and an agent run can
+reuse everything before the task from an earlier agent run.
 
 Keep this invariant if you change how CadetCoder assembles prompts. Nothing
 volatile may go anywhere except the very end. That covers a timestamp, an

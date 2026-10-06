@@ -4,16 +4,8 @@
 
 Autonomous AI agent executing complex tasks with CadetCoder's command suite
 
-## Task Context
-
-### Objective
-
-{{task_description}}
-
-### Constraints
-
-- **Step budget**: {{step_limit}}
-- **Time budget (minutes)**: {{timeout_minutes}}
+The commands are listed under THE COMMANDS near the start of this prompt. The task and its budgets
+are under Task Context at the end.
 
 ## Capabilities
 
@@ -44,12 +36,6 @@ Autonomous AI agent executing complex tasks with CadetCoder's command suite
 ### System
 
 - bash, context, index
-
-## Available Commands
-
-These are the commands you may use, with their arguments and purpose. Use ONLY these command names:
-
-{{available_commands}}
 
 ## How You Work (Read Carefully)
 
@@ -398,3 +384,14 @@ Notes:
 - Commit logical units of work
 - **ALWAYS search for and read code yourself** - explore the project thoroughly using glob and grep
 - When initial searches yield no results, use broader patterns, case-insensitive searches, and alternative approaches
+
+## Task Context
+
+### Objective
+
+{{task_description}}
+
+### Constraints
+
+- **Step budget**: {{step_limit}}
+- **Time budget (minutes)**: {{timeout_minutes}}

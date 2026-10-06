@@ -28,7 +28,7 @@
     },
     {
       "name": "available_commands",
-      "description": "The list of commands (with usage) the agent may invoke",
+      "description": "Unused by the shipped template, which leaves the list to the start of the prompt; a custom template that names it is told where the list is",
       "required": false
     }
   ]

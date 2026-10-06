@@ -69,4 +69,18 @@ public interface Environment {
      * @return what actions and observations look like and what counts as success -- never the rules
      */
     String describe();
+
+    /**
+     * Reference material the rest of the prompt refers to, placed before everything else.
+     *
+     * <p>A provider serves a request from its cache only as far as the request repeats the opening
+     * text of an earlier one. An environment whose prompt shares a long, fixed text with other
+     * prompts, such as a list of commands, returns it here so that text opens the prompt.
+     * {@link #describe()} then refers to it rather than repeating it.</p>
+     *
+     * @return the material, or empty when the environment has none
+     */
+    default String reference() {
+        return "";
+    }
 }

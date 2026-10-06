@@ -13,7 +13,7 @@ When generating actions you must use a valid action command; you cannot use simp
 **VALID ACTION BLOCKS MUST**:
 
 1. Start with `ACTION_START` and end with `ACTION_END`
-2. Have `COMMAND:` field with a valid command name from the available commands list
+2. Have `COMMAND:` field with a valid command name listed under THE COMMANDS near the start of this prompt
 3. Have `ARGS:` field with the actual arguments for that command
 4. Have `REASON:` field explaining why this action helps
 
@@ -178,10 +178,6 @@ ACTION_END
 todowrite, todoread, commit, agent, or other available commands.
 
 **ABSOLUTELY CRITICAL**: Use ONLY the ACTION_START/ACTION_END format. Any other format will fail parsing.
-
-## Available Commands
-
-{{available_commands}}
 
 ## Important Code Search Strategy
 

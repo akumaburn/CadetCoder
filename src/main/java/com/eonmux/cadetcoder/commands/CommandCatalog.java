@@ -7,13 +7,60 @@ import java.lang.management.ManagementFactory;
 
 /**
  * Single source of truth for the human-readable, usage-annotated list of commands that the agentic
- * harness advertises to the LLM. Both {@link ChatCommand} and {@link AgentCommand} inject this text
- * into their system prompt's {@code {{available_commands}}} slot so the model always sees the same,
- * accurate set of options (previously each command hard-coded its own list, which drifted).
+ * harness advertises to the LLM. {@link ChatCommand}, the classic {@link AgentCommand} loop and the
+ * harness all open their system prompt with {@link #promptBlock}, so the model always sees the same,
+ * accurate set of options.
+ *
+ * <h2>Why the list opens the prompt</h2>
+ *
+ * <p>A provider serves a request from its cache only as far as the request repeats the opening text
+ * of an earlier one. The operating principles lead every system prompt, and this list is the next
+ * thing that is the same in every loop. Placed right after them, it extends the text that a chat, an
+ * agent run and every worker have in common. Anything that differs between loops or runs, such as
+ * the task, belongs after it.</p>
  */
 public final class CommandCatalog {
 
     private CommandCatalog() {
+    }
+
+    /** The heading of {@link #promptBlock}, which the instructions after it refer to. */
+    public static final String HEADING = "THE COMMANDS";
+
+    /**
+     * What a template's {@code {{available_commands}}} slot holds.
+     *
+     * <p>The shipped templates have no such slot, because the list opens the prompt. A user's own
+     * template may still have one, and showing the list there a second time would double its cost
+     * on every request.</p>
+     */
+    public static final String LISTED_ABOVE =
+            "The commands are listed under " + HEADING + ", after the operating principles near the"
+            + " start of this prompt.";
+
+    /**
+     * The command list as it opens a loop's system prompt.
+     *
+     * <p>The text must be the same in every loop, so it says nothing about how a loop runs a
+     * command. Each loop's own instructions follow it and say that.</p>
+     *
+     * @param catalog {@link #coreCommands()}, or {@link #workerCommands()} for a worker
+     * @return the heading, one line on what follows, and the list
+     */
+    public static String promptBlock(String catalog) {
+        return HEADING + "\n"
+               + "These are the CadetCoder commands, with their arguments and purpose. Use only these"
+               + " command names. The instructions after this list say how to run them.\n\n"
+               + catalog;
+    }
+
+    /**
+     * The command list for the agent on the calling thread.
+     *
+     * @return {@link #workerCommands()} inside a worker, otherwise {@link #coreCommands()}
+     */
+    public static String forThisAgent() {
+        return WorkerPool.insideWorker() ? workerCommands() : coreCommands();
     }
 
     /**
