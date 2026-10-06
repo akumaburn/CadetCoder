@@ -247,7 +247,7 @@ final class ConnectorSupport {
     /**
      * Every model this connector offers.
      *
-     * <h2>Why asking this for all twenty-three connectors is cheap</h2>
+     * <h2>Why asking this for all twenty-seven connectors is cheap</h2>
      *
      * <p>Only a connector the catalogue does not carry costs a request, and the catalogue carries
      * all but two of them. The answer is then remembered for the rest of the process, so the four

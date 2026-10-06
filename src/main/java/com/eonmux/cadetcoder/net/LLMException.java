@@ -31,6 +31,12 @@ public class LLMException extends RuntimeException {
         AUTH(false),
         /** 429: the provider asked us to slow down. */
         RATE_LIMITED(true),
+        /**
+         * The account cannot pay for the request: no balance, an expired plan, or a usage
+         * allowance used up. Not retryable, although some providers send it as HTTP 429; see
+         * {@link LLMAccountLimitException}.
+         */
+        ACCOUNT_LIMIT(false),
         /** 400 and other terminal client errors: the request itself is wrong. */
         BAD_REQUEST(false),
         /** 5xx: the provider is broken or overloaded right now. */

@@ -53,6 +53,11 @@ public final class SecretRedactor {
             // to key on -- "user_id" and "user_name" appear in most codebases -- so the length is
             // what separates a key from a field name, and no identifier runs to forty characters.
             Pattern.compile("\\b(user_)[A-Za-z0-9]{40,}"),
+            // zai, zhipuai and their coding-plan connectors: "<id>.<secret>", a 32-character hex id
+            // and a base62 secret. The whole key goes, the id included, because the id names the
+            // account. A bare 32-character hex string is an ordinary hash, so the dot and the
+            // secret after it are what mark a key.
+            Pattern.compile("\\b[0-9a-f]{32}\\.[A-Za-z0-9]{12,}\\b"),
             // amazon-bedrock: AKIA is a long-lived access key id, ASIA a temporary one, which is
             // what AwsSigV4Signer.Credentials carries a session token for.
             Pattern.compile("\\b(?:AKIA|ASIA)[0-9A-Z]{12,}"),

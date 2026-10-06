@@ -11,8 +11,8 @@ import java.util.Set;
  *
  * <p>One place decides what counts as the model's answer, because the two backends that speak this
  * protocol -- {@link OpenAIBackend} and {@link OpenAICompatibleBackend} -- otherwise each keep their
- * own copy, and a shape one of them learns to read stays unreadable on the other. Twenty-one of the
- * twenty-three connectors reach a provider through one of those two classes.</p>
+ * own copy, and a shape one of them learns to read stays unreadable on the other. Twenty-four of the
+ * twenty-seven connectors reach a provider through one of those two classes.</p>
  *
  * <h2>Why {@code message.content} is not the only place the answer lives</h2>
  *

@@ -34,6 +34,7 @@ public class ProviderKeyShapesAreRecognisedTest {
         masks("groq", "gsk_Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56");
         masks("xai", "xai-Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56");
         masks("commandcode", "user_5Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56Qr78St90Uv12Wx34Yz56Ab78Cd90Ef12Gh34Ij56Kl78Mn90");
+        masks("zai, zhipuai", "0f1e2d3c4b5a69788796a5b4c3d2e1f0.Ab12Cd34Ef56Gh78");
         masks("github-copilot", "gho_Ab12Cd34Ef56Gh78Ij90Kl12");
         masks("amazon-bedrock", "AKIAIOSFODNN7EXAMPLE");
         masks("amazon-bedrock, temporary credentials", "ASIAIOSFODNN7EXAMPLE");
@@ -51,6 +52,17 @@ public class ProviderKeyShapesAreRecognisedTest {
     public void ordinaryProseIsLeftAlone() {
         String prose = "AIzawa reviewed the gsk file and the xai-team notes";
         assertThat(SecretRedactor.redact(prose)).isEqualTo(prose);
+    }
+
+    /**
+     * The Z.ai shape is a 32-character hex id, a dot and a secret. A hex digest on its own, or one
+     * followed by a short file extension, is not a key and must survive.
+     */
+    @Test
+    public void aHexDigestIsNotAZaiKey() {
+        String text = "sha d41d8cd98f00b204e9800998ecf8427e and d41d8cd98f00b204e9800998ecf8427e.json";
+
+        assertThat(SecretRedactor.redact(text)).isEqualTo(text);
     }
 
     /**

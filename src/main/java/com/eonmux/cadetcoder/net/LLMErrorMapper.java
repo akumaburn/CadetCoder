@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
+import com.eonmux.cadetcoder.ai.providers.ZaiPlatform;
 import com.eonmux.cadetcoder.security.SecretRedactor;
 
 import java.util.regex.Pattern;
@@ -84,6 +85,14 @@ public final class LLMErrorMapper {
             return new LLMAuthException(provider, model, endpoint, statusCode, excerpt);
         }
         if (statusCode == 429) {
+            // Matched on the full body for the reason given at refusedOverDataRetention.
+            Optional<String> exhausted = ZaiPlatform.allowanceExhaustedCode(provider, body);
+            if (exhausted.isPresent()) {
+                return new LLMAccountLimitException(provider, model, endpoint, statusCode,
+                                                    exhausted.get(),
+                                                    ZaiPlatform.adviceFor(provider, exhausted.get()),
+                                                    excerpt);
+            }
             return new LLMRateLimitException(provider, model, endpoint, statusCode, excerpt,
                                              retryAfter(headers));
         }

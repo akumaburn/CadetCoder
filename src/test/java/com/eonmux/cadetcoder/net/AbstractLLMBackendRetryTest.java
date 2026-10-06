@@ -131,6 +131,35 @@ public class AbstractLLMBackendRetryTest {
     }
 
     @Test
+    public void anAccountWithNoAllowanceLeftIsAskedOnce() throws Exception {
+        // Z.ai sends an empty balance as a 429; retrying it only delays the real reason.
+        backend.setProviderId("zai");
+        HttpResponse<String> noBalance = response(429,
+                "{\"error\":{\"code\":\"1113\",\"message\":\"Insufficient balance\"}}", null);
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(noBalance));
+
+        HttpResponse<String> result = backend.send(request);
+
+        assertThat(result.statusCode()).isEqualTo(429);
+        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any());
+    }
+
+    @Test
+    public void thatPlatformsRealRateLimitIsStillRetried() throws Exception {
+        backend.setProviderId("zai");
+        HttpResponse<String> rateLimited = response(429,
+                "{\"error\":{\"code\":\"1302\",\"message\":\"Rate limit reached\"}}", null);
+        HttpResponse<String> ok = response(200, "{}", null);
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(rateLimited))
+                .thenReturn(CompletableFuture.completedFuture(ok));
+
+        assertThat(backend.send(request).statusCode()).isEqualTo(200);
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any());
+    }
+
+    @Test
     public void ioFailuresAreRetriedThenReportedAsTransportFailures() throws Exception {
         when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(CompletableFuture.failedFuture(new IOException("Connection refused")));

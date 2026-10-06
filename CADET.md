@@ -12,7 +12,7 @@ CadetCoder is a Java 17 command-line coding assistant. It exposes file, search,
 git, web and notebook commands directly. It also runs an agentic `chat` and
 `agent` loop that drives those same commands from a request in plain English.
 
-Model access goes through 23 provider connectors backed by the models.dev
+Model access goes through 27 provider connectors backed by the models.dev
 catalog, or through a local OpenAI-compatible endpoint. A connector the catalog
 does not carry is asked for its own model list at `{base}/models`. A gateway
 whose models do not all answer on one wire protocol chooses per model through
@@ -572,6 +572,13 @@ and the loop stops.
 provider that cut the account off answers that way for as long as anyone asks.
 Ctrl-C ends a wait at once, as a stop.
 
+`LLMErrorMapper` maps a 429 to `LLMAccountLimitException`, kind
+`ACCOUNT_LIMIT`, when the body says that the account cannot pay. That kind is
+not retried. Only `ai/providers/ZaiPlatform` reports such a body today. It
+reads the business code in `error.code` for the four Z.ai and Zhipu AI
+connectors, because those platforms send an empty balance or an expired plan as
+a 429.
+
 ### Output
 
 `ui/Glyphs` owns the console markers. Each has an ASCII fallback for a terminal
@@ -1005,6 +1012,10 @@ as `ConnectorProtocol`:
   `net/GoogleGenerativeAIBackend`;
 - `BEDROCK_CONVERSE`, Bedrock Converse, implemented by
   `net/AmazonBedrockBackend`.
+
+`ai/providers/ZaiPlatform` holds the ids of the four GLM connectors (`zai`,
+`zai-coding-plan`, `zhipuai`, `zhipuai-coding-plan`) and the Z.ai business
+codes. The ids match the models.dev catalog, which lists their models.
 
 `ai/catalog/` loads and caches the models.dev catalog. `auth/CredentialResolver`
 resolves a connector's key, and takes the first of these that is set:

@@ -3,8 +3,9 @@
 CadetCoder is a Java 17+ command-line coding assistant. Point it at a model
 provider. It then reads, searches, edits and commits files in your project,
 either from a direct command or from a request in plain English. It ships
-connectors for 23 providers, among them Anthropic, OpenAI, OpenRouter, Google,
-Amazon Bedrock, GitHub Copilot, Groq and a local OpenAI-compatible endpoint.
+connectors for 27 providers, among them Anthropic, OpenAI, OpenRouter, Google,
+Amazon Bedrock, GitHub Copilot, Groq, Z.ai and a local OpenAI-compatible
+endpoint.
 
 The agent loops (`chat`, `agent` and `workers`) search the codebase, propose
 edits and run checks. Uber mode makes the model confirm that the work is
@@ -127,7 +128,7 @@ cover the setup. Run `models` to see what exists, `login` to authenticate, and
 ### 1. See what is available
 
 ```bash
-cadet models              # catalog summary, then the 23 connectors
+cadet models              # catalog summary, then the 27 connectors
 cadet models providers    # connector table: protocol, auth scheme, env vars
 cadet models anthropic    # the models one provider offers
 cadet models find claude  # search model ids and names across every provider
@@ -151,10 +152,10 @@ commandcode            Command Code               OPENAI_CHAT/ANTHROPIC_MESSAGES
 local                  Local (OpenAI-compatible)  OPENAI_CHAT                     NONE            provider default  -
 ```
 
-The full list of 23 also covers xAI, Azure OpenAI, Cloudflare AI Gateway,
+The full list of 27 also covers xAI, Azure OpenAI, Cloudflare AI Gateway,
 Cloudflare Workers AI, GitHub Copilot, OpenCode Zen, OpenCode Go, Groq,
-DeepSeek, Cerebras, Fireworks AI, Together AI, Baseten, DeepInfra, Mistral and
-Perplexity.
+DeepSeek, Cerebras, Fireworks AI, Together AI, Baseten, DeepInfra, Mistral,
+Perplexity, and four connectors for the GLM models of Z.ai and Zhipu AI.
 
 A connector normally speaks one protocol for every model it offers. A gateway
 that resells several vendors need not. Command Code serves its Claude models
@@ -320,6 +321,39 @@ Most models have a zero-retention upstream. Prefer a switch of model over a
 change to the setting, because the setting is global and the gap is usually
 specific to one model.
 
+### Z.ai and the GLM models
+
+Z.ai serves the GLM models. Zhipu AI is the same company's platform for
+mainland China, with separate accounts and keys. Each platform has two
+endpoints. One charges the account balance. The other charges a GLM Coding Plan
+subscription. Pick the connector that matches how the account pays.
+
+| Connector | Endpoint | Pays with | Key variables |
+|---|---|---|---|
+| `zai` | `https://api.z.ai/api/paas/v4` | Z.ai account balance | `ZAI_API_KEY`, `ZHIPU_API_KEY` |
+| `zai-coding-plan` | `https://api.z.ai/api/coding/paas/v4` | GLM Coding Plan | `ZAI_API_KEY`, `ZHIPU_API_KEY` |
+| `zhipuai` | `https://open.bigmodel.cn/api/paas/v4` | Zhipu AI account balance | `ZHIPUAI_API_KEY`, `ZHIPU_API_KEY` |
+| `zhipuai-coding-plan` | `https://open.bigmodel.cn/api/coding/paas/v4` | GLM Coding Plan | `ZHIPUAI_API_KEY`, `ZHIPU_API_KEY` |
+
+```bash
+export ZAI_API_KEY=...
+cadet models zai-coding-plan               # the GLM models the plan covers
+cadet models use zai-coding-plan glm-4.7
+```
+
+A request to a balance endpoint is charged to the balance even when the account
+has a Coding Plan. With an empty balance the platform answers HTTP 429 with
+code 1113. CadetCoder does not retry that answer. It reports the code and names
+the coding-plan connector. CadetCoder also does not retry the other 429 codes
+that mean the account cannot pay: an expired plan, a used-up usage period, or a
+model the plan does not include. A 429 that means too many requests is retried
+as usual.
+
+The GLM models think before they answer, and the platform returns that text
+under `reasoning_content`. CadetCoder reads the answer from `content`. Neither
+platform offers a per-request retention control, so `models providers` reports
+`provider default` for all four connectors.
+
 ## Your first task
 
 Non-AI commands work with no provider configured. Start there to confirm the
@@ -484,7 +518,8 @@ marker on a prefix that short.
 CadetCoder retries only failures that can plausibly change outcome on a second
 try: 408, 429, 5xx, and transport errors. It does not retry a 400 or a 401,
 because a repeat of a malformed or unauthorised request produces the same
-answer more slowly.
+answer more slowly. It also does not retry a 429 whose body says that the
+account cannot pay, which Z.ai sends for an empty balance or an expired plan.
 
 A 200 is not automatically a success. Status codes describe the HTTP exchange
 rather than the provider behind it. Two things arrive under a 200 and mean "try
@@ -1886,7 +1921,7 @@ src/main/java/com/eonmux/cadetcoder/
 ├── agents/                   # worker pool, registry and results for `workers`
 ├── ai/
 │   ├── AIManager.java, AIClient.java, APIClient.java, LocalAIClient.java, ConnectorAIClient.java
-│   ├── providers/            # the 23 connectors and their auth schemes
+│   ├── providers/            # the 27 connectors and their auth schemes
 │   ├── catalog/              # models.dev catalog loading and caching
 │   ├── metrics/              # token counts and speeds for each request
 │   ├── templates/            # the 11 chat templates

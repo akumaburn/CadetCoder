@@ -174,6 +174,26 @@ public final class ProviderRegistry {
         add("perplexity", "Perplexity", List.of("PERPLEXITY_API_KEY"),
                 "https://api.perplexity.ai", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT, null);
 
+        // Z.ai and Zhipu AI: the GLM models, from the international and the mainland platform, each
+        // billed either to the account balance or to a GLM Coding Plan. See ZaiPlatform for why
+        // that makes four connectors. Both platforms read the key as a bearer token. ZAI_API_KEY
+        // and ZHIPUAI_API_KEY are the names each platform's own SDK reads; ZHIPU_API_KEY is the
+        // name the models.dev catalog gives for all four. Neither platform offers a per-request
+        // retention control.
+        add(ZaiPlatform.ZAI, "Z.AI", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://api.z.ai/api/paas/v4", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null);
+        add(ZaiPlatform.ZAI_CODING_PLAN, "Z.AI Coding Plan", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://api.z.ai/api/coding/paas/v4", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null);
+        add(ZaiPlatform.ZHIPUAI, "Zhipu AI", List.of("ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://open.bigmodel.cn/api/paas/v4", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null);
+        add(ZaiPlatform.ZHIPUAI_CODING_PLAN, "Zhipu AI Coding Plan",
+                List.of("ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://open.bigmodel.cn/api/coding/paas/v4", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null);
+
         // Local OpenAI-compatible servers (llama-server / LM Studio / Ollama).
         add("local", "Local (OpenAI-compatible)", List.of(),
                 "http://localhost:8012/v1", AuthScheme.NONE, ConnectorProtocol.OPENAI_CHAT, null);
