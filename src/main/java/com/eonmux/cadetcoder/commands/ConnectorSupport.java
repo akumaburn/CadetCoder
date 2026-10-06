@@ -229,37 +229,48 @@ final class ConnectorSupport {
     }
 
     /**
-     * Lists the connector's catalog models and prompts the user to choose one. When the
-     * catalog has no models for the provider, prompts for a free-form model id. Returns the
-     * chosen model id, or null if cancelled.
-     */
-    /**
-     * Every model the connector offers, from whichever source can say.
-     *
-     * <p>The catalog is preferred where it has an answer, because it carries pricing, context
-     * limits and capability flags that a listing from the provider does not. Where it has none --
-     * a gateway newer than the catalog, a local server, an endpoint inside a company -- the
-     * provider is asked directly, rather than the user being asked to remember model ids.</p>
-     *
-     * @param c the connector
-     * @return the models, in catalog or provider order; empty when neither source could say
-     */
-    /**
      * Every model this connector offers.
      *
-     * <h2>Why asking this for all twenty-seven connectors is cheap</h2>
+     * <p>The catalogue is preferred where it has an answer, because it carries pricing, context
+     * limits and capability flags that a listing from the provider does not. Where it has none --
+     * a gateway newer than the catalogue, a local server, an endpoint inside a company -- the
+     * provider is asked directly, rather than the user being asked to remember model ids. A
+     * connector whose plan decides its models asks the provider first; see
+     * {@link ProviderConnector#listsModelsLive()}.</p>
      *
-     * <p>Only a connector the catalogue does not carry costs a request, and the catalogue carries
-     * all but two of them. The answer is then remembered for the rest of the process, so the four
-     * callers that want the same list within one {@code models} command -- the count in the table,
-     * the table of one connector's models, a search, and the interactive picker -- pay for it
-     * once.</p>
+     * <p>{@link ProviderModelListing} remembers each answer, so the views of one {@code models}
+     * command that want the same list send one request for it.</p>
      *
      * @param c the connector
-     * @return its models, empty when neither the catalogue nor the provider would say
+     * @return its models, in catalogue or provider order; empty when neither source would say
      */
     static List<ModelsDevModel> models(ProviderConnector c) {
         return models(c, options(c.getId()));
+    }
+
+    /**
+     * The models this connector offers, as a view of every connector shows them.
+     *
+     * <p>The same as {@link #models(ProviderConnector)}, except that a connector whose plan decides
+     * its models answers from the catalogue. Such connectors can share one key variable across
+     * platforms, and the four GLM connectors do: a view of every connector would send a key for one
+     * platform to the other platform's host, when the user asked about neither. The list of the one
+     * connector still asks the provider.</p>
+     *
+     * @param c the connector
+     * @return its models; empty when neither source would say
+     */
+    static List<ModelsDevModel> modelsWithoutThePlan(ProviderConnector c) {
+        Map<String, String> options = options(c.getId());
+        ModelsDevProvider cat = ModelCatalog.getInstance().getProvider(c.getId());
+        if (cat != null && !cat.getModels().isEmpty()) {
+            return new ArrayList<>(cat.getModels().values());
+        }
+        if (c.listsModelsLive()) {
+            return List.of();
+        }
+        return new ArrayList<>(
+                ProviderModelListing.fetchForEveryConnector(c, resolvedKey(c), options));
     }
 
     /**
@@ -315,14 +326,7 @@ final class ConnectorSupport {
      * spelling even when the entry was found under another, such as a different letter case.</p>
      */
     private static ModelsDevModel under(String id, ModelsDevModel known) {
-        if (id.equals(known.getId())) {
-            return known;
-        }
-        ModelsDevModel renamed = new ModelsDevModel();
-        renamed.setId(id);
-        renamed.setName(known.getName() != null ? known.getName() : id);
-        renamed.setLimit(known.getLimit());
-        return renamed;
+        return id.equals(known.getId()) ? known : known.withId(id);
     }
 
     /**

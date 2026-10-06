@@ -64,6 +64,21 @@ public class AskingAProviderWhatModelsItHasTest {
     }
 
     @Test
+    public void textThatWouldControlTheTerminalIsNotPrinted() {
+        // The listing is printed. An id with an escape sequence in it is not a model anybody can
+        // call, and a name with one would move the cursor or retitle the window.
+        List<ModelsDevModel> models = ProviderModelListing.parse(
+                "{\"data\":[{\"id\":\"glm\\u001b]0;owned\\u0007\"},"
+                + "{\"id\":\"glm\\u009b31m-4\"},"
+                + "{\"id\":\"glm-5.1\",\"name\":\"GLM\\u001b[2J\\u009b-5.1\"}]}");
+
+        assertThat(models).singleElement().satisfies(m -> {
+            assertThat(m.getId()).isEqualTo("glm-5.1");
+            assertThat(m.getName()).isEqualTo("GLM[2J-5.1");
+        });
+    }
+
+    @Test
     public void theNameAndContextLengthAreTakenWhenTheyAreOffered() {
         List<ModelsDevModel> models = ProviderModelListing.parse(
                 "{\"object\":\"list\",\"data\":[{\"id\":\"claude-opus-5\",\"object\":\"model\","

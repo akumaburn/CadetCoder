@@ -5,7 +5,7 @@
 Autonomous AI agent executing complex tasks with CadetCoder's command suite
 
 The commands are listed under THE COMMANDS near the start of this prompt. The task and its budgets
-are under Task Context at the end.
+are under Task Context near the end.
 
 ## Capabilities
 

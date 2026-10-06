@@ -12,11 +12,12 @@ import java.util.List;
  * <p>Every loop's system prompt opens with the operating principles and then the command list; see
  * {@link CommandCatalog}. A provider that caches without being asked reuses that opening by
  * itself. A provider that caches only up to a marker in the request -- Anthropic, Bedrock, the
- * Anthropic models behind OpenRouter, and OpenAI's GPT-5.6 and later -- reuses it only when a marker
- * sits exactly at its end, so the backends for those providers ask this class where to put one.</p>
+ * Anthropic models behind OpenRouter, and OpenAI and Azure OpenAI on GPT-5.6 and later -- reuses it
+ * only when a marker sits exactly at its end, so the backends for those providers ask this class
+ * where to put one.</p>
  *
  * <p>The end is found in the text rather than carried beside it, so a prompt reaches the backend as
- * the one string it already is, and a prompt that does not open this way is marked as before.</p>
+ * the one string it already is, and a prompt that does not open this way is marked as one part.</p>
  */
 public final class SharedOpening {
 

@@ -136,6 +136,63 @@ public class AplanListsTheModelsItCoversTest {
         }
     }
 
+    @Test
+    public void aModelListedInAnotherLetterCaseKeepsEverythingTheCatalogSaysAboutIt() {
+        keys().put(PLAN, "0f1e2d3c4b5a69788796a5b4c3d2e1f0.Ab12Cd34Ef56Gh78");
+        ModelsDevModel described = model("glm-5.1", "GLM-5.1", 200_000);
+        described.setToolCall(true);
+        described.setReasoning(true);
+        ModelsDevModel.Cost cost = new ModelsDevModel.Cost();
+        cost.setInput(1.4);
+        described.setCost(cost);
+
+        try (MockedStatic<ModelCatalog> catalog = catalogOf(Map.of(PLAN, provider(described)));
+             MockedStatic<ProviderModelListing> listing = listingOf("GLM-5.1")) {
+
+            ModelsDevModel offered = ConnectorSupport.models(connector).get(0);
+
+            assertThat(offered.getId())
+                    .as("the platform's spelling, which is what a request sends back")
+                    .isEqualTo("GLM-5.1");
+            assertThat(offered.isToolCall()).isTrue();
+            assertThat(offered.isReasoning()).isTrue();
+            assertThat(offered.getCost().getInput()).isEqualTo(1.4);
+            assertThat(offered.getLimit().getContext()).isEqualTo(200_000L);
+        }
+    }
+
+    @Test
+    public void aRelatedEntryIsFoundWhateverTheLetterCase() {
+        try (MockedStatic<ModelCatalog> catalog = catalogOf(Map.of(
+                     PLAN, provider(model("glm-4.7", "GLM-4.7", 204_800)),
+                     "zai", provider(model("glm-5.1", "GLM-5.1", 200_000))))) {
+
+            assertThat(ModelCatalog.getInstance().findServedModel(PLAN, "GLM-5.1"))
+                    .isNotNull()
+                    .satisfies(m -> assertThat(m.getLimit().getContext()).isEqualTo(200_000L));
+        }
+    }
+
+    @Test
+    public void aListOfEveryConnectorDoesNotAskThePlatform() {
+        // The four GLM connectors can share one key variable. A table or a search of every
+        // connector would send a key for one platform to the other platform's host, so those read
+        // the catalog and only a list of the one connector asks the platform.
+        keys().put(PLAN, "0f1e2d3c4b5a69788796a5b4c3d2e1f0.Ab12Cd34Ef56Gh78");
+
+        try (MockedStatic<ModelCatalog> catalog = catalogOf(Map.of(
+                     PLAN, provider(model("glm-4.7", "GLM-4.7", 204_800))));
+             MockedStatic<ProviderModelListing> listing = listingOf("glm-5.1")) {
+
+            new ModelsCommand().execute(new String[] {});
+            new ModelsCommand().execute(new String[] {"find", "glm"});
+
+            listing.verify(() -> ProviderModelListing.fetch(eq(connector), any(), any()), never());
+            listing.verify(() -> ProviderModelListing.fetchForEveryConnector(eq(connector), any(),
+                                                                             any()), never());
+        }
+    }
+
     // ------------------------------------------------------------------ fixtures
 
     /** Replaces the catalog with one holding exactly these providers. */

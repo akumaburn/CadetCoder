@@ -108,9 +108,9 @@ public final class ProviderConnector {
      *
      * <p>The catalog lists what a provider offers in general. A provider whose offer depends on the
      * account -- a subscription plan that covers some models and not others -- is the only authority
-     * on what one key may call, and the catalog falls behind it as models are added. Z.ai's GLM
-     * Coding Plan served {@code glm-5.1} while the catalog's entry for the plan no longer named it,
-     * so the tool offered a list that left out a model the user was paying for.</p>
+     * on what one key may call, and the catalog falls behind it as models are added. A plan can
+     * include a model that the catalog's entry for the plan does not name, and a list taken from
+     * the catalog then leaves out a model the user pays for.</p>
      *
      * <p>The provider's list names models and nothing more, so each one is still described from the
      * catalog: from this connector's own entry, or from a related entry that publishes the same model

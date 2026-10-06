@@ -136,6 +136,8 @@ public class AconnectorIsCountedByWhatItWillActuallyListTest {
         MockedStatic<ProviderModelListing> mock = mockStatic(ProviderModelListing.class);
         mock.when(() -> ProviderModelListing.supports(any(ProviderConnector.class))).thenReturn(true);
         mock.when(() -> ProviderModelListing.fetch(any(), any(), any())).thenReturn(models);
+        mock.when(() -> ProviderModelListing.fetchForEveryConnector(any(), any(), any()))
+            .thenReturn(models);
         return mock;
     }
 

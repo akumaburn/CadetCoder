@@ -35,6 +35,7 @@ public class ProviderKeyShapesAreRecognisedTest {
         masks("xai", "xai-Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56");
         masks("commandcode", "user_5Ab12Cd34Ef56Gh78Ij90Kl12Mn34Op56Qr78St90Uv12Wx34Yz56Ab78Cd90Ef12Gh34Ij56Kl78Mn90");
         masks("zai, zhipuai", "0f1e2d3c4b5a69788796a5b4c3d2e1f0.Ab12Cd34Ef56Gh78");
+        masks("zai, zhipuai, in upper case", "0F1E2D3C4B5A69788796A5B4C3D2E1F0.Ab12Cd34Ef56Gh78");
         masks("github-copilot", "gho_Ab12Cd34Ef56Gh78Ij90Kl12");
         masks("amazon-bedrock", "AKIAIOSFODNN7EXAMPLE");
         masks("amazon-bedrock, temporary credentials", "ASIAIOSFODNN7EXAMPLE");

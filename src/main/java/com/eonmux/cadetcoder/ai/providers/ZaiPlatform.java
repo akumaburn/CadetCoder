@@ -21,7 +21,8 @@ import java.util.Set;
  * to the balance endpoint is charged to the balance even when the account has a Coding Plan, and
  * fails with code 1113 when the balance is empty, so the endpoint is part of what a user chooses
  * and each one gets its own connector. The four ids are the ones the
- * models.dev catalog uses, which is what lets {@code models} list each one's GLM models.</p>
+ * models.dev catalog uses, which lets the catalog describe each one's GLM models, and supply the
+ * list when the platform gives none.</p>
  *
  * <h2>Why a 429 is not always a rate limit here</h2>
  *
@@ -29,8 +30,8 @@ import java.util.Set;
  * business code in the body ({@code {"error":{"code":"1113","message":...}}}). Codes such as 1302
  * mean too many requests, and a later attempt succeeds. Codes such as 1113 (no balance) or 1309
  * (Coding Plan expired) mean the account cannot pay for the request, and no later attempt within a
- * run can succeed. Read as a rate limit, those cost the user about ninety seconds of retries before
- * the real reason appeared. The codes are listed at https://docs.z.ai/api-reference/api-code.</p>
+ * run can succeed. Read as a rate limit, they would be retried for about ninety seconds and then
+ * reported as a rate limit. The codes are listed at https://docs.z.ai/api-reference/api-code.</p>
  */
 public final class ZaiPlatform {
 

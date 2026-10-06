@@ -11,14 +11,19 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * Asks a provider which models it has, when the catalog cannot say.
@@ -66,14 +71,43 @@ public final class ProviderModelListing {
 
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(5);
 
+    /** Characters that a terminal reads as control rather than text. */
+    private static final Pattern CONTROL = Pattern.compile("[\\p{Cntrl}\\x{80}-\\x{9F}]");
+
     /**
-     * What each endpoint has already answered, keyed by the URL that was asked.
+     * How long a failed answer is remembered for a view of every connector.
+     *
+     * <p>Long enough that the views of every connector in one {@code models} command do not each
+     * wait for an endpoint that is down. Short enough that a long-lived shell asks again after a
+     * server starts.</p>
+     */
+    private static final long FAILURE_REMEMBERED_NANOS = Duration.ofMinutes(1).toNanos();
+
+    /**
+     * What each endpoint answered for each key.
      *
      * <p>Keyed by URL rather than by connector id because {@code baseURL} is a per-provider option:
-     * the same connector pointed at a gateway and at the vendor is two different questions, and a
-     * cache keyed on the id alone would answer the second with the first.</p>
+     * the same connector pointed at a gateway and at the vendor is two different questions. Keyed
+     * by the key as well, because the list is what that key may call, and another key can belong
+     * to another plan or account. The key is held as a digest.</p>
      */
-    private static final Map<String, List<ModelsDevModel>> ANSWERED = new ConcurrentHashMap<>();
+    private static final Map<String, Answer> ANSWERED = new ConcurrentHashMap<>();
+
+    /** One answer: the models, and when a failed answer stops counting. */
+    private record Answer(List<ModelsDevModel> models, long expiresAtNanos) {
+
+        static Answer listed(List<ModelsDevModel> models) {
+            return new Answer(List.copyOf(models), Long.MAX_VALUE);
+        }
+
+        static Answer failed() {
+            return new Answer(List.of(), System.nanoTime() + FAILURE_REMEMBERED_NANOS);
+        }
+
+        boolean current() {
+            return expiresAtNanos == Long.MAX_VALUE || System.nanoTime() - expiresAtNanos < 0;
+        }
+    }
 
     private ProviderModelListing() {
     }
@@ -101,7 +135,10 @@ public final class ProviderModelListing {
     }
 
     /**
-     * Asks the provider for its models.
+     * Asks the provider for its models, for a view of the one connector the user named.
+     *
+     * <p>A remembered list is reused. A remembered failure is not: the user may have started the
+     * server or fixed the key since, and names the connector to find that out.</p>
      *
      * @param connector the connector to ask
      * @param apiKey    the resolved credential, or {@code null} for an endpoint that needs none
@@ -111,14 +148,54 @@ public final class ProviderModelListing {
      */
     public static List<ModelsDevModel> fetch(ProviderConnector connector, String apiKey,
                                              Map<String, String> options) {
+        return fetch(connector, apiKey, options, false);
+    }
+
+    /**
+     * Asks the provider for its models, for a view of every connector.
+     *
+     * <p>A failure from the last minute is reused as well as a list, so a view that covers every
+     * connector does not wait again for each endpoint that is down.</p>
+     *
+     * @param connector the connector to ask
+     * @param apiKey    the resolved credential, or {@code null} for an endpoint that needs none
+     * @param options   per-provider options; only {@code baseURL} is read
+     * @return the models it named; empty when it could not be asked
+     */
+    public static List<ModelsDevModel> fetchForEveryConnector(ProviderConnector connector,
+                                                              String apiKey,
+                                                              Map<String, String> options) {
+        return fetch(connector, apiKey, options, true);
+    }
+
+    private static List<ModelsDevModel> fetch(ProviderConnector connector, String apiKey,
+                                              Map<String, String> options,
+                                              boolean reuseFailure) {
         if (!supports(connector)) {
             return List.of();
         }
         String url = baseUrl(connector, options) + "/models";
-        List<ModelsDevModel> remembered = ANSWERED.get(url);
-        if (remembered != null) {
-            return remembered;
+        String asked = url + "\n" + digest(apiKey);
+        Answer remembered = ANSWERED.get(asked);
+        if (remembered != null && remembered.current()
+            && (reuseFailure || !remembered.models().isEmpty())) {
+            return remembered.models();
         }
+        List<ModelsDevModel> listed = ask(connector, apiKey, url);
+        // An interrupted request says nothing about the endpoint, so it is not remembered.
+        if (!Thread.currentThread().isInterrupted()) {
+            ANSWERED.put(asked, listed.isEmpty() ? Answer.failed() : Answer.listed(listed));
+        }
+        return listed;
+    }
+
+    /**
+     * Sends one listing request.
+     *
+     * @return the models named; empty when the request failed or named none
+     */
+    private static List<ModelsDevModel> ask(ProviderConnector connector, String apiKey,
+                                            String url) {
         try {
             HttpRequest.Builder builder = HttpRequests.to(URI.create(url))
                                                      .timeout(REQUEST_TIMEOUT)
@@ -140,14 +217,7 @@ public final class ProviderModelListing {
                           + " returned status " + response.statusCode());
                 return List.of();
             }
-            List<ModelsDevModel> listed = parse(response.body());
-            // Only a real answer is remembered. A provider that was unreachable once is worth
-            // asking again in the same session: the endpoint may be starting, or the key may have
-            // been entered since.
-            if (!listed.isEmpty()) {
-                ANSWERED.put(url, List.copyOf(listed));
-            }
-            return listed;
+            return parse(response.body());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return List.of();
@@ -200,12 +270,14 @@ public final class ProviderModelListing {
      */
     private static ModelsDevModel toModel(JsonNode entry) {
         String id = entry.path("id").asText(null);
-        if (id == null || id.isBlank()) {
+        // An id with a control character in it is not one a request could name, and printing it
+        // would hand the terminal an escape sequence.
+        if (id == null || id.isBlank() || CONTROL.matcher(id).find()) {
             return null;
         }
         ModelsDevModel model = new ModelsDevModel();
         model.setId(id);
-        model.setName(entry.path("name").asText(id));
+        model.setName(CONTROL.matcher(entry.path("name").asText(id)).replaceAll(""));
 
         long context = entry.path("context_length").asLong(0L);
         if (context > 0) {
@@ -214,6 +286,20 @@ public final class ProviderModelListing {
             model.setLimit(limit);
         }
         return model;
+    }
+
+    /** A key as the cache holds it: a SHA-256 digest, or a fixed mark for no key. */
+    private static String digest(String apiKey) {
+        if (apiKey == null || apiKey.isEmpty()) {
+            return "-";
+        }
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(apiKey.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            // Every Java platform is required to provide SHA-256.
+            throw new IllegalStateException(e);
+        }
     }
 
     /** The endpoint to ask, preferring one the user has overridden. */

@@ -38,8 +38,9 @@ registry, so a command behaves the same on every surface. `Main` declares no
 picocli subcommands; see the comment on its `@Command` annotation.
 
 `CommandCatalog` is the single source of truth for the command list injected
-into the LLM system prompt. `ChatCommand` and `AgentCommand` share it, so the
-advertised tools cannot drift per entry point.
+into the LLM system prompt. `ChatCommand`, `AgentCommand` and the harness's
+`CommandEnvironment` share it, so the advertised tools cannot drift per entry
+point.
 
 `InputRouter` makes one decision for every entry point. A leading `/` means
 "command"; anything else is a message for the AI, and `//` escapes. About twenty
@@ -306,7 +307,7 @@ A step that sends a turn of its own must render it with
 `IterativeExecutor.render` and append it to the transcript. `chat` sends its
 first turn from the `analyze_request` step. `ChatContext` carries the live
 transcript for that, and the step appends the request entry and the model's
-reply. Before this, turn 2 shared only the system prompt with turn 1.
+reply.
 `EachChatTurnRepeatsTheTurnBeforeItTest` checks that every chat request starts
 with the whole of the previous one.
 
@@ -1053,7 +1054,10 @@ which models a key may call. The four GLM connectors are built that way.
 back to the catalog when the provider gives no answer. Each listed id is
 described by `ModelCatalog.findServedModel`. That method also searches the
 connector's related catalog ids, so a model that the plan's catalog entry does
-not name still gets its name and window from the platform's entry.
+not name still gets its name and window from the platform's entry. The
+`models` table and `models find` take these connectors' models from the catalog
+through `ConnectorSupport.modelsWithoutThePlan`, so a key shared across the two
+platforms goes only to the connector the user names.
 
 `ai/catalog/` loads and caches the models.dev catalog. `auth/CredentialResolver`
 resolves a connector's key, and takes the first of these that is set:
@@ -1069,7 +1073,11 @@ selected.
 The `models` command counts a connector by what it will actually list, whatever
 the catalog carries. A connector the catalog does not carry is asked at
 `{base}/models` through `ProviderModelListing`. That class caches each answer
-for the life of the process and logs a failure at debug level. A connector that
+by URL and by a SHA-256 digest of the key. It keeps a list for the life of the
+process, and logs a failure at debug level. The `models` table and `models find`
+reuse a failure from the last minute. A list of one connector asks again after a
+failure. The class drops a listed id that holds a C0 or C1 control character,
+and strips those characters from a listed name. A connector that
 publishes its own list and did not answer prints `-`; a connector with no models
 prints `0`. `models find` searches those connector-published lists before the
 catalog.

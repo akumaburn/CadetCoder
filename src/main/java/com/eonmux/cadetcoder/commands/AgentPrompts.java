@@ -18,8 +18,9 @@ import java.util.function.Consumer;
  * <h2>Why the system prompt has a fallback</h2>
  *
  * <p>The command list opens the prompt, ahead of the template; see {@link CommandCatalog}. The
- * maintained template carries the capabilities, the step-by-step loop and both reply formats. If the template engine cannot render it for any reason, an agent with no
- * system prompt at all would propose replies nothing can read; the inline prompt is the smallest
+ * maintained template carries the capabilities, the step-by-step loop and both reply formats. If
+ * the template engine cannot render it for any reason, an agent with no system prompt at all would
+ * propose replies nothing can read; the inline prompt is the smallest
  * thing that still states the format, so a template failure costs quality rather than the run.</p>
  */
 final class AgentPrompts {

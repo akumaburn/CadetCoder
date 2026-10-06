@@ -118,4 +118,30 @@ public class ModelsDevModel {
     public void   setLimit(Limit limit) { this.limit = limit; }
     public Modalities getModalities()  { return modalities; }
     public void       setModalities(Modalities modalities) { this.modalities = modalities; }
+
+    /**
+     * This entry under another id, with everything else it says unchanged.
+     *
+     * @param newId the id the copy carries
+     * @return a new entry; this one is not changed
+     */
+    public ModelsDevModel withId(String newId) {
+        ModelsDevModel copy = new ModelsDevModel();
+        copy.id          = newId;
+        copy.name        = name;
+        copy.family      = family;
+        copy.releaseDate = releaseDate;
+        copy.lastUpdated = lastUpdated;
+        copy.knowledge   = knowledge;
+        copy.attachment  = attachment;
+        copy.reasoning   = reasoning;
+        copy.temperature = temperature;
+        copy.toolCall    = toolCall;
+        copy.openWeights = openWeights;
+        copy.status      = status;
+        copy.cost        = cost;
+        copy.limit       = limit;
+        copy.modalities  = modalities;
+        return copy;
+    }
 }

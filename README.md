@@ -345,7 +345,10 @@ With a key, `cadet models <connector>` lists the models that the platform's
 `/models` names for that key. The catalog can lag behind a plan. Each model
 takes its name and context window from the catalog, from any of the four GLM
 entries. Without a key, or when the platform does not answer, the list comes
-from the catalog.
+from the catalog. The connector table of `cadet models` and `cadet models find`
+read the catalog for these four connectors. They send no request, because one
+`ZHIPU_API_KEY` can serve all four connectors, and a key for one platform must
+not go to the other platform's host.
 
 Z.ai caches prompts without being asked. In measurements, it reused a cached
 prompt only up to one of two points: the end of an earlier prompt, or the point
@@ -362,7 +365,8 @@ model the plan does not include. A 429 that means too many requests is retried
 as usual.
 
 The GLM models think before they answer, and the platform returns that text
-under `reasoning_content`. CadetCoder reads the answer from `content`. Neither
+under `reasoning_content`. CadetCoder reads the answer from `content`, and
+falls back to `reasoning_content` only when `content` is empty. Neither
 platform offers a per-request retention control, so `models providers` reports
 `provider default` for all four connectors.
 
@@ -518,7 +522,8 @@ automatically. Others cache only what the request explicitly marks.
 | OpenAI before GPT-5.6, and other OpenAI-compatible providers | nothing | these match a shared prefix automatically, and the models before GPT-5.6 reject the breakpoint field |
 | Google Generative AI | nothing | implicit caching is automatic, and the explicit mode is a separate stateful `cachedContents` resource rather than a per-request marker |
 
-CadetCoder uses up to three breakpoints where they apply:
+CadetCoder uses up to three breakpoints where they apply. OpenAI and Azure
+OpenAI take only the first:
 
 1. The end of the shared opening: the operating principles and the command
    list. The system prompt is sent as two blocks, cut at that point. A run of
@@ -532,8 +537,8 @@ CadetCoder uses up to three breakpoints where they apply:
 A provider ignores a breakpoint on a prefix shorter than the model's minimum.
 The shared opening is a few thousand tokens. Anthropic's minimum is 4,096
 tokens for Opus 4.5, Opus 4.6 and Haiku 4.5, so those models may not cache the
-opening on its own. GitHub Copilot is not marked, because it publishes no documentation
-for a cache field.
+opening on its own. GitHub Copilot is not marked, because it publishes no
+documentation for a cache field.
 
 Breakpoint support depends on the model rather than on the provider alone.
 Bedrock rejects `cachePoint` outright for models that do not implement it.
@@ -1848,7 +1853,9 @@ them to override one, or use the `prompt` command.
 The default system prompt is a further template, named `system`, and the only
 one that applies to every command. It holds the operating principles the agent
 works by, and it leads the system prompt of every request. The command's own
-prompt follows it, with its command catalog and required action format.
+prompt follows it. In `chat`, `agent` and workers the command list comes
+first, right after the principles, and the command's own prompt and action
+format come after the list.
 Commands that send no system prompt of their own get the principles alone.
 
 CadetCoder composes that prompt once, where every completion funnels through,

@@ -162,6 +162,9 @@ public final class ModelCatalog {
         }
         for (String related : connector.getRelatedCatalogIds()) {
             ModelsDevModel model = findModel(related, modelId);
+            if (model == null) {
+                model = findModel(related, lowerCased(modelId));
+            }
             if (model != null) {
                 return model;
             }

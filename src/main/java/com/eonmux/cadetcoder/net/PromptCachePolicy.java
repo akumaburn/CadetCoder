@@ -23,9 +23,10 @@ import java.util.concurrent.ConcurrentHashMap;
  *       prefix is.</li>
  *   <li><b>Implicit</b> - the provider matches a shared leading prefix automatically and there is
  *       nothing to send. <b>OpenAI Chat Completions</b> before GPT-5.6 and the OpenAI-compatible
- *       providers behave this way, as does <b>Google Generative AI</b> (its other mode, explicit context caching,
- *       is a separate stateful resource API rather than a per-request marker, so it is out of scope
- *       here). For these, a stable append-only prompt IS the whole implementation.</li>
+ *       providers behave this way, as does <b>Google Generative AI</b> (its other mode, explicit
+ *       context caching, is a separate stateful resource API rather than a per-request marker, so
+ *       it is out of scope here). For these, a stable append-only prompt IS the whole
+ *       implementation.</li>
  *   <li><b>Both</b> - OpenAI's GPT-5.6 and later families mark the latest message themselves and
  *       also take {@code "prompt_cache_breakpoint": {"mode": "explicit"}} on a text part, which is
  *       how the opening every loop shares is reused; see {@code OpenAiCacheBreakpoints}.</li>

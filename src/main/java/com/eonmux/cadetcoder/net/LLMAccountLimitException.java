@@ -6,8 +6,8 @@ package com.eonmux.cadetcoder.net;
  *
  * <p>Sent by some providers as HTTP 429, the status of a rate limit, and told apart only by a code
  * in the body. It is not retried. A rate limit clears in seconds, and these clear only when somebody
- * pays or a usage window of hours resets, so the retries spent about ninety seconds of the user's
- * time and then reported a rate limit that was not the reason.</p>
+ * pays or a usage window of hours resets, so retries would spend about ninety seconds of the user's
+ * time and then report a rate limit that is not the reason.</p>
  */
 public class LLMAccountLimitException extends LLMException {
 

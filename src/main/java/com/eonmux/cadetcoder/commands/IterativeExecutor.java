@@ -334,7 +334,7 @@ public class IterativeExecutor {
             // would rewind, and every following request would miss the cache. The old guard only
             // caught null, which left the more damaging case -- a non-null replacement -- silent.
             context.put("conversationHistory", transcript);
-            recordTurn(transcript, llmResponse, stepResult, nextPrompt);
+            recordTurn(transcript, stepResult, nextPrompt);
 
             llmResponse = ask.requiresUserInput(stepResult)
                           // getUserInput opens its own "User Input Required" sub-header; announcing
@@ -342,6 +342,11 @@ public class IterativeExecutor {
                           // the shell, opened two nested sections for one prompt).
                           ? ask.getUserInput(nextPrompt, stepResult.getOutput())
                           : askTheModel(command, iteration, nextPrompt, transcript, guard, compactor);
+            // Recorded as soon as it arrives, so a step that sends a turn of its own -- chat's
+            // first analysis -- appends after the reply that led to it rather than before.
+            if (llmResponse != null) {
+                transcript.add(replyEntry(llmResponse));
+            }
 
             // Record what this turn produced, and stop if the run has stopped moving. This is the
             // executor's backstop: the commands it drives do not propose actions, so ActionLoopGuard
@@ -454,7 +459,7 @@ public class IterativeExecutor {
     }
 
     /**
-     * Appends one turn to the transcript.
+     * Appends what a step produced to the transcript. The reply the step acted on is already there.
      *
      * <p>The step's output and the next prompt often carry the SAME command output: the chat loop
      * builds one string that embeds it and another that embeds it again, and appending both put every
@@ -462,11 +467,8 @@ public class IterativeExecutor {
      * appeared twice in a 61,000-character prompt. The condensed form is used only when the next
      * prompt provably already contains the body, so nothing can be lost.</p>
      */
-    private static void recordTurn(List<String> transcript, String llmResponse,
+    private static void recordTurn(List<String> transcript,
                                    IterativeCommand.StepResult stepResult, String nextPrompt) {
-        if (llmResponse != null) {
-            transcript.add(replyEntry(llmResponse));
-        }
         transcript.add("System: "
                        + StepOutput.condenseForTranscript(stepResult.getOutput(), nextPrompt));
         transcript.add("Next prompt: " + nextPrompt);

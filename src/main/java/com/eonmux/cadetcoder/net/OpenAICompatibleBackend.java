@@ -197,9 +197,11 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
      *
      * <p>OpenRouter proxies to Anthropic and Gemini models and documents the Anthropic
      * {@code cache_control} spelling inside content parts; for those models a breakpoint is the only
-     * way to get a cache hit. Every other provider on this protocol -- OpenAI itself, Groq, DeepSeek,
-     * Together, Fireworks, Cerebras and the rest -- caches a shared prefix automatically, and would
-     * gain nothing from an extra field while risking a rejection from a stricter endpoint.</p>
+     * way to get a cache hit. OpenAI and Azure OpenAI take a breakpoint of their own on GPT-5.6 and
+     * later; see {@link OpenAiCacheBreakpoints}. Every other provider on this protocol -- Groq,
+     * DeepSeek, Together, Fireworks, Cerebras and the rest -- caches a shared prefix automatically,
+     * and would gain nothing from an extra field while risking a rejection from a stricter
+     * endpoint.</p>
      *
      * @return {@code true} when a breakpoint should be considered for this provider
      */

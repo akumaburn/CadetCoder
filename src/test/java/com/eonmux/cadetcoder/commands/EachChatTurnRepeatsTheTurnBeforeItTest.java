@@ -74,6 +74,30 @@ public class EachChatTurnRepeatsTheTurnBeforeItTest {
     }
 
     @Test
+    public void aRequestThatArrivesAsAnAnswerFollowsTheQuestionThatAskedForIt() {
+        // A chat started without a request asks for one, and the answer becomes the request. The
+        // answer belongs in the transcript before the request it led to; recorded after it, every
+        // later prompt showed the answer out of place, after the reply to it.
+        List<PromptData> asked;
+        try (StubbedProvider provider = StubbedProvider.answering(
+                "Ask what they need.", "list the files", LIST_FILES, "SUCCESS: listed")) {
+            assertThat(new ChatCommand().execute(new String[] {})).isEqualTo(ExitCode.OK);
+            asked = provider.asked();
+        }
+
+        String last = asked.get(asked.size() - 1).getUserPrompt();
+        assertThat(last.indexOf("LLM: list the files"))
+                .as("the answer comes before the request it became")
+                .isGreaterThanOrEqualTo(0)
+                .isLessThan(last.indexOf("User request: list the files"));
+        assertThat(last.split("LLM: list the files", -1)).as("and appears once").hasSize(2);
+        for (int turn = 1; turn < asked.size(); turn++) {
+            assertThat(asked.get(turn).getUserPrompt())
+                    .startsWith(asked.get(turn - 1).getUserPrompt());
+        }
+    }
+
+    @Test
     public void theSecondTurnShowsTheRequestAndTheReplyThatChoseTheAction() {
         List<PromptData> asked = askedDuring(LIST_FILES, "SUCCESS: listed");
 
