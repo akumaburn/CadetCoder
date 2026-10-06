@@ -25,13 +25,12 @@ import java.util.Locale;
  * </pre>
  *
  * <p>API keys are <em>not</em> written to the command history and are stored per provider in
- * the configuration. When a real console is attached the key is read with
- * {@link java.io.Console#readPassword(String, Object...)} so it is <em>not</em> echoed as it is
- * typed. The TUI prompt-line path cannot read input without echoing it (the shell renders each
- * typed character), so for security the key is <em>never</em> read inline there: the user is
- * instead directed to export the provider environment variable or to run from a real console.
- * After a successful login the user is offered the chance to make the provider active and choose
- * a model.</p>
+ * the configuration. The key is <em>not</em> shown as it is typed: in the shell it is read on the
+ * input line, which draws one mark per character, and outside it with
+ * {@link java.io.Console#readPassword(String, Object...)}. With neither, as when input is
+ * redirected, the key is <em>never</em> read: the user is directed to export the provider
+ * environment variable instead. After a successful login the user is offered the chance to make
+ * the provider active and choose a model.</p>
  */
 @picocli.CommandLine.Command (name = "login", description = "Connect an AI provider (API key or device flow)")
 public class LoginCommand implements CommandRegistry.Command {
@@ -135,28 +134,20 @@ public class LoginCommand implements CommandRegistry.Command {
     }
 
     /**
-     * Whether a secret can be read without echoing it back to the user. Only a real
-     * {@link java.io.Console} offers a non-echoing read; the TUI prompt line renders every typed
-     * character, so it is treated as unable to read a secret safely.
+     * Whether a secret can be read without echoing it back to the user: on the shell's input line,
+     * which draws one mark per character, or on a real {@link java.io.Console}.
      */
     private boolean canReadSecretWithoutEcho() {
-        return System.console() != null;
+        return OutputRouter.getInstance().canReadSecret();
     }
 
     /**
-     * Reads a secret credential without echoing it. Only called when a real console is attached
-     * (see {@link #canReadSecretWithoutEcho()}); the value is read via
-     * {@link java.io.Console#readPassword(String, Object...)} so the typed key is not rendered
-     * into the console pane. The key value is never printed or logged.
+     * Reads a secret credential without echoing it. The key value is never printed or logged.
+     *
+     * @return the key, or {@code null} or empty when none was entered
      */
     private String readSecret(String prompt) {
-        java.io.Console console = System.console();
-        if (console == null) {
-            // Defensive: callers must gate on canReadSecretWithoutEcho(); never echo a secret.
-            return null;
-        }
-        char[] chars = console.readPassword("%s", prompt);
-        return chars == null ? null : new String(chars);
+        return OutputRouter.getInstance().getSecretInput(prompt);
     }
 
     /**
@@ -172,8 +163,7 @@ public class LoginCommand implements CommandRegistry.Command {
                     + " before starting, then run 'login " + c.getId() + "' again.");
         }
         OutputFormatter.printInfo("Alternatively, run the 'login " + c.getId()
-                + "' command from a real terminal (outside the TUI) where the key can be typed "
-                + "without being echoed.");
+                + "' command in a terminal, where the key can be typed without being shown.");
     }
 
     /**
@@ -215,6 +205,15 @@ public class LoginCommand implements CommandRegistry.Command {
      * the saved credential in place without changing the active provider.
      */
     private int offerActivate(ProviderConnector c) {
+        Configuration.AiConfig ai = ConfigManager.getInstance().getConfig().getAi();
+        if (c.getId().equals(ai.getProvider())
+            && ai.getModel() != null && !ai.getModel().isBlank()) {
+            // Already the provider in use, with a model: there is nothing to switch to.
+            OutputFormatter.printInfo(c.getId() + " is the active provider, with model "
+                    + ai.getModel() + ". Run '" + CommandUsage.prefix()
+                    + "models select' to pick another model.");
+            return 0;
+        }
         boolean activate = OutputRouter.getInstance()
                 .getConfirmation("Use " + c.getId() + " as the active provider and pick a model now?");
         if (!activate) {

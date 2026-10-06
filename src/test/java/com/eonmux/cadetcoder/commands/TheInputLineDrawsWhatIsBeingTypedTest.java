@@ -68,6 +68,16 @@ public class TheInputLineDrawsWhatIsBeingTypedTest {
     }
 
     @Test
+    public void aSecretIsDrawnAsOneMarkPerCharacter() {
+        String drawn = draw(typed("sekret-key"),
+                            new ShellInputLine.View(true, "Paste the API key", "-key-more", true));
+
+        assertThat(drawn).doesNotContain("sekret")
+                         .doesNotContain("key-more")
+                         .contains("**********");
+    }
+
+    @Test
     public void theHeadingNamesWhereCommandsWillRun() {
         assertThat(draw(typed(""), new ShellInputLine.View(false, null, ""))).contains("Command");
     }

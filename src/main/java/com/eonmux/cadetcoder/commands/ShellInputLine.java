@@ -42,9 +42,17 @@ final class ShellInputLine {
      * @param prompting  whether a command is waiting for an answer
      * @param promptText what it asked, when it is
      * @param ghostText  the predicted rest of the command name, empty when there is no prediction
+     * @param secret     whether what is typed is drawn as one mark per character, for a key
      */
-    record View(boolean prompting, String promptText, String ghostText) {
+    record View(boolean prompting, String promptText, String ghostText, boolean secret) {
+
+        View(boolean prompting, String promptText, String ghostText) {
+            this(prompting, promptText, ghostText, false);
+        }
     }
+
+    /** The mark each character of a secret is drawn as. */
+    private static final char SECRET_MARK = '*';
 
     /**
      * Draws the input region.
@@ -55,7 +63,8 @@ final class ShellInputLine {
      * @param state what has been typed and where the caret is
      * @param view  what the line is for this frame
      */
-    void render(Frame frame, Rect rect, TuiTheme theme, TextInputState state, View view) {
+    void render(Frame frame, Rect rect, TuiTheme theme, TextInputState typed, View view) {
+        TextInputState state = view.secret() ? masked(typed) : typed;
         Style fieldStyle  = ShellWidgets.nonNull(theme == null ? null : theme.getFieldActive());
         Style windowStyle = ShellWidgets.nonNull(theme == null ? null : theme.getWindowBackground());
         Style accentStyle = ShellWidgets.nonNull(theme == null ? null : theme.getAccent1());
@@ -75,7 +84,9 @@ final class ShellInputLine {
         ShellWidgets.sectionTitle(frame, region.get(0),
                                   glyphs.rule(region.get(0).width()), borderStyle);
         ShellWidgets.sectionTitle(frame, region.get(1),
-                                  heading(prompt, view.promptText(), where, glyphs), borderStyle);
+                                  heading(prompt, view.promptText(), where, glyphs,
+                                          region.get(1).width()),
+                                  borderStyle);
         Rect fieldRect = region.get(2);
 
         Block inputBlock = Block.builder()
@@ -95,9 +106,27 @@ final class ShellInputLine {
         if (!inputInner.isEmpty()) {
             int cursorX = ShellWidgets.cursorColumn(state.text(), state.cursorPosition(),
                                                     inputInner.left(), inputInner.width());
-            renderCompletionHint(frame, inputInner, cursorX, theme, state, view.ghostText());
+            if (!view.secret()) {
+                renderCompletionHint(frame, inputInner, cursorX, theme, state, view.ghostText());
+            }
             frame.setCursorPosition(cursorX, inputInner.top());
         }
+    }
+
+    /**
+     * The typed text as it is drawn for a secret: one mark per character, the caret where it is.
+     *
+     * @param typed what has been typed
+     * @return a new state; {@code typed} is not changed
+     */
+    private static TextInputState masked(TextInputState typed) {
+        TextInputState marks = new TextInputState(
+                String.valueOf(SECRET_MARK).repeat(typed.length()));
+        marks.moveCursorToStart();
+        for (int i = 0; i < typed.cursorPosition(); i++) {
+            marks.moveCursorRight();
+        }
+        return marks;
     }
 
     /**
@@ -107,11 +136,16 @@ final class ShellInputLine {
      * @param promptText what it asked, when it is
      * @param where      the working directory, already shortened, or empty when there is none
      * @param glyphs     the marks this terminal can draw
+     * @param columns    the width of the bar the heading is drawn on
      * @return the heading, already spaced for the bar it is drawn on
      */
-    static String heading(boolean prompting, String promptText, String where, Glyphs glyphs) {
+    static String heading(boolean prompting, String promptText, String where, Glyphs glyphs,
+                          int columns) {
         if (prompting) {
-            return " ? " + ShellWidgets.safeTitle(promptText, glyphs.ellipsis()) + " ";
+            // The whole bar, less the " ? " before the question and the space after it. A question
+            // often ends in what it wants typed, such as "(y/n)", so cutting it short to a title's
+            // budget cut off the part that says how to answer.
+            return " ? " + ShellWidgets.safeTitle(promptText, columns - 4, glyphs.ellipsis()) + " ";
         }
         if (where == null || where.isEmpty()) {
             return "  Command ";

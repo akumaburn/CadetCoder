@@ -1467,7 +1467,8 @@ public class InteractiveShell implements InputHandler {
     /** What the input line has to be drawn from this frame. */
     private ShellInputLine.View inputView() {
         return new ShellInputLine.View(promptHandshake.isActive(), promptHandshake.text(),
-                                       currentCompletion().ghostText());
+                                       currentCompletion().ghostText(),
+                                       promptHandshake.isSecret());
     }
 
     /** What the console has to be drawn from this frame, beyond the transcript and the scroll. */
@@ -1560,6 +1561,26 @@ public class InteractiveShell implements InputHandler {
         }
 
         return promptHandshake.ask(prompt, () -> {
+            TuiRunner cur = runner;
+            return cur != null && cur.isRunning();
+        }, () -> dirty = true);
+    }
+
+    /**
+     * Reads a secret on the shell's input line, which draws each typed character as one mark.
+     *
+     * <p>The shell reads every key press while it runs, so a read from the terminal beside it gets
+     * nothing. The answer is not echoed to the console, the history or the session log.</p>
+     *
+     * @param prompt what to ask
+     * @return the answer, or {@code ""} when the prompt was cancelled or the shell is not running
+     */
+    public String getSecretInput(String prompt) {
+        TuiRunner r = runner;
+        if (r == null || !r.isRunning()) {
+            return "";
+        }
+        return promptHandshake.askForSecret(prompt, () -> {
             TuiRunner cur = runner;
             return cur != null && cur.isRunning();
         }, () -> dirty = true);

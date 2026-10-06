@@ -112,7 +112,7 @@ public class ALabelIsCutToTheColumnsItHasTest {
 
     @Test
     public void theInputHeadingNamesWhereCommandsWillRun() {
-        assertThat(ShellInputLine.heading(false, null, "~/work/cadet", Glyphs.ASCII))
+        assertThat(ShellInputLine.heading(false, null, "~/work/cadet", Glyphs.ASCII, 80))
                 .contains("Command")
                 .contains("~/work/cadet");
     }
@@ -120,8 +120,10 @@ public class ALabelIsCutToTheColumnsItHasTest {
     @Test
     public void theInputHeadingDropsTheDirectoryWhenThereIsNoneToShow() {
         // Rather than a heading trailing a separator with nothing after it.
-        assertThat(ShellInputLine.heading(false, null, "", Glyphs.ASCII)).isEqualTo("  Command ");
-        assertThat(ShellInputLine.heading(false, null, null, Glyphs.ASCII)).isEqualTo("  Command ");
+        assertThat(ShellInputLine.heading(false, null, "", Glyphs.ASCII, 80))
+                .isEqualTo("  Command ");
+        assertThat(ShellInputLine.heading(false, null, null, Glyphs.ASCII, 80))
+                .isEqualTo("  Command ");
     }
 
     @Test
@@ -129,10 +131,25 @@ public class ALabelIsCutToTheColumnsItHasTest {
         // The field itself cannot say which of the two things it is for: it holds the answer either
         // way. So the heading carries it.
         String heading = ShellInputLine.heading(true, "Overwrite src/Main.java?", "~/work",
-                                                Glyphs.ASCII);
+                                                Glyphs.ASCII, 80);
 
         assertThat(heading).contains("Overwrite src/Main.java?");
         assertThat(heading).doesNotContain("Command");
         assertThat(heading).doesNotContain("~/work");
+    }
+
+    @Test
+    public void aQuestionUsesTheWholeLineRatherThanATitlesBudget() {
+        // The answer the question wants -- "(y/n)" -- is at its end. Cut to the forty columns a
+        // result title gets, the question lost it, and the line looked like a second prompt with
+        // nothing to say what it wanted.
+        String question =
+                "Use zai-coding-plan as the active provider and pick a model now? (y/n): ";
+
+        assertThat(ShellInputLine.heading(true, question, "~/work", Glyphs.ASCII, 100))
+                .contains("pick a model now? (y/n)");
+        assertThat(CharWidth.of(ShellInputLine.heading(true, question, "~/work", Glyphs.ASCII, 30)))
+                .as("still cut to the line it is drawn on")
+                .isLessThanOrEqualTo(30);
     }
 }

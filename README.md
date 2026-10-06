@@ -186,18 +186,19 @@ cadet login status       # per-connector credential status; keys are never print
 cadet login logout openai
 ```
 
-`login` reads the key with `System.console().readPassword(...)`, so the
-terminal does not echo it and your shell history does not record it. This needs
-a real terminal. `System.console()` returns `null` when output is piped, under
-CI, and on the interactive shell's prompt line. In those cases `login` refuses
-to read the key rather than echo it, and it names the environment variable
-instead.
+`login` does not show the key as you type it, and your shell history does not
+record it. In the interactive shell, the key is read on the input line, which
+draws one `*` for each character. On the command line, `login` reads the key
+with `System.console().readPassword(...)`, so the terminal does not echo it.
+`System.console()` returns `null` when output is piped and under CI. In those
+cases `login` refuses to read the key rather than echo it, and it names the
+environment variable instead.
 
 ```text
 ⚠ Cannot read the API key here without showing it on screen, so it will not be
   requested on this prompt for security.
 Export ANTHROPIC_API_KEY before starting, then run 'login anthropic' again.
-Alternatively, run the 'login anthropic' command from a real terminal (outside the TUI) where the key can be typed without being echoed.
+Alternatively, run the 'login anthropic' command in a terminal, where the key can be typed without being shown.
 ```
 
 That refusal is intended. Use Option A in any context without a terminal.

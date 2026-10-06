@@ -92,6 +92,24 @@ class PromptHandshakeTest {
     }
 
     @Test
+    @DisplayName("A secret question is marked as one while it is up, and only then")
+    void aSecretQuestionIsMarkedWhileItIsUp() throws Exception {
+        PromptHandshake handshake = new PromptHandshake();
+        BlockingQueue<String> got = new ArrayBlockingQueue<>(1);
+
+        Thread asker = new Thread(() -> got.add(handshake.askForSecret("key", ALIVE, null)));
+        asker.start();
+        until("the prompt to go up", handshake::isActive);
+
+        assertThat(handshake.isSecret()).isTrue();
+        handshake.submit("typed");
+
+        assertThat(got.poll(5, TimeUnit.SECONDS)).isEqualTo("typed");
+        until("the line to be released", () -> !handshake.isActive());
+        assertThat(handshake.isSecret()).as("the next question shows what is typed").isFalse();
+    }
+
+    @Test
     @DisplayName("An answer reaches the asker and the line is released")
     void anAnswerIsDelivered() throws Exception {
         PromptHandshake handshake = new PromptHandshake();

@@ -3,13 +3,23 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.test.TestOutputCapture;
+import com.eonmux.cadetcoder.ui.OutputRouter;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 /**
  * Tests for {@link LoginCommand}. Interactive prompts resolve to an empty response in the
@@ -98,6 +108,50 @@ public class LoginCommandTest {
         // No key should have been persisted.
         assertThat(ConfigManager.getInstance().getConfig().getAi().getProviderApiKeys())
                 .doesNotContainKey("anthropic");
+    }
+
+    @Test
+    public void inTheShellTheKeyIsReadOnTheShellsHiddenLine() {
+        // The shell owns the terminal and reads every key press. A read from the terminal beside it
+        // got nothing and cancelled the login, and the key the user then typed went to the shell's
+        // command line instead.
+        OutputRouter router = mock(OutputRouter.class);
+        when(router.canReadSecret()).thenReturn(true);
+        when(router.getSecretInput(anyString())).thenReturn("test-key-0123456789");
+        when(router.commandPrefix()).thenReturn("/");
+        try (MockedStatic<OutputRouter> routers =
+                     mockStatic(OutputRouter.class, Mockito.CALLS_REAL_METHODS)) {
+            routers.when(OutputRouter::getInstance).thenReturn(router);
+
+            assertThat(loginCommand.execute(new String[] {"anthropic"})).isZero();
+        }
+
+        verify(router).getSecretInput(contains("anthropic"));
+        assertThat(ConfigManager.getInstance().getConfig().getAi().getProviderApiKeys())
+                .containsEntry("anthropic", "test-key-0123456789");
+    }
+
+    @Test
+    public void aKeyForTheActiveProviderIsNotFollowedByAnOfferToActivateIt() {
+        // The provider is already the one in use, with a model. Asking whether to switch to it put
+        // a second question on the line straight after the key, with nothing to decide.
+        Configuration.AiConfig ai = ConfigManager.getInstance().getConfig().getAi();
+        ai.setProvider("anthropic");
+        ai.setModel("claude-sonnet-4-5");
+        OutputRouter router = mock(OutputRouter.class);
+        when(router.canReadSecret()).thenReturn(true);
+        when(router.getSecretInput(anyString())).thenReturn("test-key-0123456789");
+        when(router.commandPrefix()).thenReturn("/");
+        try (MockedStatic<OutputRouter> routers =
+                     mockStatic(OutputRouter.class, Mockito.CALLS_REAL_METHODS)) {
+            routers.when(OutputRouter::getInstance).thenReturn(router);
+
+            assertThat(loginCommand.execute(new String[] {"anthropic"})).isZero();
+        }
+
+        verify(router, never()).getConfirmation(anyString());
+        assertThat(ai.getProvider()).isEqualTo("anthropic");
+        assertThat(ai.getModel()).isEqualTo("claude-sonnet-4-5");
     }
 
     @Test

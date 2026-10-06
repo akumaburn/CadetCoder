@@ -458,6 +458,18 @@ final class ShellWidgets {
      * @return the title
      */
     static String safeTitle(String text, String ellipsis) {
+        return safeTitle(text, TITLE_COLUMNS, ellipsis);
+    }
+
+    /**
+     * A title for a heading, cut to the columns given.
+     *
+     * @param text     the title, may be {@code null}
+     * @param columns  the widest the title may be
+     * @param ellipsis what marks a cut
+     * @return the title, without a trailing colon
+     */
+    static String safeTitle(String text, int columns, String ellipsis) {
         if (text == null) {
             return "Input";
         }
@@ -467,7 +479,7 @@ final class ShellWidgets {
             // the space that stood before the colon sitting at the end of a heading.
             trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
-        return fitWithin(trimmed, TITLE_COLUMNS, ellipsis);
+        return fitWithin(trimmed, Math.max(1, columns), ellipsis);
     }
 
     /**

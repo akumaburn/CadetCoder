@@ -174,6 +174,43 @@ public class OutputRouter {
     }
 
     /**
+     * Whether a secret can be read now without being shown as it is typed.
+     *
+     * <p>The shell draws a secret as one mark per character. Outside the shell, a real console
+     * reads one without echo. A redirected input has neither.</p>
+     *
+     * @return whether {@link #getSecretInput} can read one
+     */
+    public boolean canReadSecret() {
+        return (shell != null && isRouting) || System.console() != null;
+    }
+
+    /**
+     * Reads a secret without showing it as it is typed.
+     *
+     * <p>Inside the shell the question goes on the shell's input line. The shell reads every key
+     * press while it runs, so a read from the console beside it gets nothing.</p>
+     *
+     * @param prompt what to ask
+     * @return the answer; empty when it was cancelled or nobody can be asked, or {@code null} when
+     *         {@link #canReadSecret} does not hold
+     */
+    public String getSecretInput(String prompt) {
+        if (!canReachAPerson("a secret")) {
+            return "";
+        }
+        if (shell != null && isRouting) {
+            return shell.getSecretInput(prompt);
+        }
+        java.io.Console console = System.console();
+        if (console == null) {
+            return null;
+        }
+        char[] chars = console.readPassword("%s", prompt);
+        return chars == null ? null : new String(chars);
+    }
+
+    /**
      * Whether a question asked now would actually reach someone who can answer it.
      *
      * <h2>Why the check lives here</h2>

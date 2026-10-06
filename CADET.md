@@ -1453,8 +1453,12 @@ change in full and the patch is refused unless the file still matches it.
 
 `CommandRegistry.redactSensitiveArgs` masks `login` arguments before they are
 logged. `ConfigCommand` redacts secrets from displayed config. `LoginCommand`
-refuses to read a key at all unless a real `System.console()` can read it
-without echo.
+reads a key through `OutputRouter.getSecretInput`. In the shell, that puts the
+question on the input line through `PromptHandshake.askForSecret`, and
+`ShellInputLine` draws one `*` for each typed character. The shell owns the
+terminal while it runs, so a read from `System.console()` beside it gets
+nothing. Outside the shell, the key comes from `System.console().readPassword`.
+With neither, `LoginCommand` refuses to read a key.
 
 ### State and configuration
 

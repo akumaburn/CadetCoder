@@ -44,12 +44,18 @@ final class PromptHandshake {
     private final ReentrantLock line = new ReentrantLock(true);
 
     private volatile boolean               active;
+    private volatile boolean               secret;
     private volatile String                text;
     private volatile BlockingQueue<String> response;
 
     /** @return whether a question is currently on the input line */
     boolean isActive() {
         return active;
+    }
+
+    /** @return whether the answer to the question on the line must not be drawn as typed */
+    boolean isSecret() {
+        return secret;
     }
 
     /** @return the question currently on the input line, or {@code null} when there is none */
@@ -66,12 +72,30 @@ final class PromptHandshake {
      * @return the answer, or {@code ""} when the prompt was cancelled or the UI stopped
      */
     String ask(String prompt, BooleanSupplier uiRunning, Runnable onChange) {
+        return ask(prompt, false, uiRunning, onChange);
+    }
+
+    /**
+     * Puts a question on the input line whose answer is drawn as one mark per character.
+     *
+     * @param prompt    what to ask
+     * @param uiRunning whether the UI can still deliver an answer; polled while waiting
+     * @param onChange  run whenever the display needs repainting; may be {@code null}
+     * @return the answer, or {@code ""} when the prompt was cancelled or the UI stopped
+     */
+    String askForSecret(String prompt, BooleanSupplier uiRunning, Runnable onChange) {
+        return ask(prompt, true, uiRunning, onChange);
+    }
+
+    private String ask(String prompt, boolean hidden, BooleanSupplier uiRunning,
+                       Runnable onChange) {
         if (!acquire(uiRunning)) {
             return "";
         }
         BlockingQueue<String> queue = new ArrayBlockingQueue<>(1);
         response = queue;
         text     = prompt;
+        secret   = hidden;
         active   = true;
         repaint(onChange);
         try {
@@ -92,6 +116,7 @@ final class PromptHandshake {
             return "";
         } finally {
             active = false;
+            secret = false;
             text   = null;
             // Still guarded: a cancel from the UI thread may already have cleared the slot.
             if (response == queue) {
