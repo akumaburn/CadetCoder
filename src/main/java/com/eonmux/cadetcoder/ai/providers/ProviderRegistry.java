@@ -72,6 +72,16 @@ public final class ProviderRegistry {
                                                  wire, retention));
     }
 
+    /**
+     * A GLM connector: OpenAI Chat Completions with a bearer key, its models listed by the platform
+     * and described by every GLM entry in the catalog.
+     */
+    private void addGlm(String id, String name, List<String> env, String baseUrl) {
+        connectors.put(id, new ProviderConnector(id, name, env, baseUrl, AuthScheme.BEARER,
+                                                 ConnectorProtocol.OPENAI_CHAT, null)
+                .listingModelsLive(ZaiPlatform.catalogIdsBesides(id)));
+    }
+
     private void registerDefaults() {
         // --- bespoke protocols ---
         add("anthropic", "Anthropic", List.of("ANTHROPIC_API_KEY"),
@@ -179,20 +189,17 @@ public final class ProviderRegistry {
         // that makes four connectors. Both platforms read the key as a bearer token. ZAI_API_KEY
         // and ZHIPUAI_API_KEY are the names each platform's own SDK reads; ZHIPU_API_KEY is the
         // name the models.dev catalog gives for all four. Neither platform offers a per-request
-        // retention control.
-        add(ZaiPlatform.ZAI, "Z.AI", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
-                "https://api.z.ai/api/paas/v4", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null);
-        add(ZaiPlatform.ZAI_CODING_PLAN, "Z.AI Coding Plan", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
-                "https://api.z.ai/api/coding/paas/v4", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null);
-        add(ZaiPlatform.ZHIPUAI, "Zhipu AI", List.of("ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
-                "https://open.bigmodel.cn/api/paas/v4", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null);
-        add(ZaiPlatform.ZHIPUAI_CODING_PLAN, "Zhipu AI Coding Plan",
+        // retention control. Which GLM models a key may call depends on its plan, so the list comes
+        // from the platform's /models; see ProviderConnector.listingModelsLive.
+        addGlm(ZaiPlatform.ZAI, "Z.AI", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://api.z.ai/api/paas/v4");
+        addGlm(ZaiPlatform.ZAI_CODING_PLAN, "Z.AI Coding Plan", List.of("ZAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://api.z.ai/api/coding/paas/v4");
+        addGlm(ZaiPlatform.ZHIPUAI, "Zhipu AI", List.of("ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
+                "https://open.bigmodel.cn/api/paas/v4");
+        addGlm(ZaiPlatform.ZHIPUAI_CODING_PLAN, "Zhipu AI Coding Plan",
                 List.of("ZHIPUAI_API_KEY", "ZHIPU_API_KEY"),
-                "https://open.bigmodel.cn/api/coding/paas/v4", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null);
+                "https://open.bigmodel.cn/api/coding/paas/v4");
 
         // Local OpenAI-compatible servers (llama-server / LM Studio / Ollama).
         add("local", "Local (OpenAI-compatible)", List.of(),

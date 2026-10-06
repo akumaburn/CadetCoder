@@ -1,5 +1,7 @@
 package com.eonmux.cadetcoder.ai.catalog;
 
+import com.eonmux.cadetcoder.ai.providers.ProviderConnector;
+import com.eonmux.cadetcoder.ai.providers.ProviderRegistry;
 import com.eonmux.cadetcoder.net.BoundedHttp;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.logging.CadetLogger;
@@ -134,7 +136,37 @@ public final class ModelCatalog {
         if (served != null) {
             return served;
         }
+        served = findInRelatedEntries(providerId, modelId);
+        if (served != null) {
+            return served;
+        }
         return findVendorsOwnEntry(modelId);
+    }
+
+    /**
+     * The entry another catalog provider publishes for a model this connector serves.
+     *
+     * <p>A connector that lists its models live can offer one its own catalog entry does not name:
+     * the provider added it and the catalog has not caught up. The same model is usually listed
+     * under a related provider -- the platform a subscription plan belongs to -- and the connector
+     * names those; see {@link ProviderConnector#listingModelsLive}.</p>
+     *
+     * @param providerId the connector the request goes to
+     * @param modelId    the model id as configured
+     * @return the entry, or {@code null} when no related provider lists it
+     */
+    private ModelsDevModel findInRelatedEntries(String providerId, String modelId) {
+        ProviderConnector connector = ProviderRegistry.getInstance().get(providerId);
+        if (connector == null) {
+            return null;
+        }
+        for (String related : connector.getRelatedCatalogIds()) {
+            ModelsDevModel model = findModel(related, modelId);
+            if (model != null) {
+                return model;
+            }
+        }
+        return null;
     }
 
     /**

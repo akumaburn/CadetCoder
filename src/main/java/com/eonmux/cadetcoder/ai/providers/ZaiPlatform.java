@@ -3,6 +3,7 @@ package com.eonmux.cadetcoder.ai.providers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.Set;
@@ -71,6 +72,23 @@ public final class ZaiPlatform {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private ZaiPlatform() {
+    }
+
+    /**
+     * The other GLM connectors, whose catalog entries describe the same models.
+     *
+     * <p>The balance connector of the same platform first, because its entry names the most
+     * models, then the rest. A model the catalog lists for one platform and not the other is the
+     * same model either way.</p>
+     *
+     * @param id one of the four connector ids
+     * @return the other three, in the order to ask them
+     */
+    static List<String> catalogIdsBesides(String id) {
+        List<String> order = id.startsWith(ZHIPUAI)
+                ? List.of(ZHIPUAI, ZHIPUAI_CODING_PLAN, ZAI, ZAI_CODING_PLAN)
+                : List.of(ZAI, ZAI_CODING_PLAN, ZHIPUAI, ZHIPUAI_CODING_PLAN);
+        return order.stream().filter(other -> !other.equals(id)).toList();
     }
 
     /**

@@ -16,9 +16,11 @@ import com.eonmux.cadetcoder.ui.UnifiedOutput;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Lists the connectors and the models.dev catalog &mdash; the opencode-style provider and
@@ -574,13 +576,19 @@ public class ModelsCommand implements CommandRegistry.Command {
         String q = query.toLowerCase(Locale.ROOT);
         List<String[]> rows = new ArrayList<>();
         rows.add(new String[] {"Provider", "Model", "Context"});
+        // A connector whose provider lists its models is searched through that list, which is what
+        // models <connector> prints, and its catalogue entry is then passed over so no row repeats.
+        Set<String> searched = new HashSet<>();
         for (ProviderConnector c : registry.all()) {
-            if (ConnectorSupport.listsItsOwnModels(c)) {
+            if (ConnectorSupport.listsItsOwnModels(c) || c.listsModelsLive()) {
                 collectMatches(c.getId(), ConnectorSupport.models(c), q, rows);
+                searched.add(c.getId());
             }
         }
         for (ModelsDevProvider provider : catalog.getProviders().values()) {
-            collectMatches(provider.getId(), provider.getModels().values(), q, rows);
+            if (!searched.contains(provider.getId())) {
+                collectMatches(provider.getId(), provider.getModels().values(), q, rows);
+            }
         }
         int matches = rows.size() - 1;
 

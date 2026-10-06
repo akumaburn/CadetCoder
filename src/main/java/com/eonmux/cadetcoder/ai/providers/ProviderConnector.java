@@ -29,6 +29,8 @@ public final class ProviderConnector {
     private final ModelWire           wire;
     private final Map<String, String> staticHeaders;
     private final DataRetentionControl retention;
+    private final boolean             modelsListedLive;
+    private final List<String>        relatedCatalogIds;
 
     public ProviderConnector(String id,
                              String displayName,
@@ -71,6 +73,21 @@ public final class ProviderConnector {
                              Map<String, String> staticHeaders,
                              ModelWire wire,
                              DataRetentionControl retention) {
+        this(id, displayName, env, defaultBaseUrl, authScheme, protocol, staticHeaders, wire,
+             retention, false, List.of());
+    }
+
+    private ProviderConnector(String id,
+                              String displayName,
+                              List<String> env,
+                              String defaultBaseUrl,
+                              AuthScheme authScheme,
+                              ConnectorProtocol protocol,
+                              Map<String, String> staticHeaders,
+                              ModelWire wire,
+                              DataRetentionControl retention,
+                              boolean modelsListedLive,
+                              List<String> relatedCatalogIds) {
         this.id             = id;
         this.displayName    = displayName;
         this.env            = env != null ? env : List.of();
@@ -80,6 +97,49 @@ public final class ProviderConnector {
         this.wire           = wire != null ? wire : ModelWire.always(protocol);
         this.staticHeaders  = staticHeaders != null ? staticHeaders : Map.of();
         this.retention      = retention != null ? retention : DataRetentionControl.none();
+        this.modelsListedLive  = modelsListedLive;
+        this.relatedCatalogIds = relatedCatalogIds != null ? List.copyOf(relatedCatalogIds) : List.of();
+    }
+
+    /**
+     * This connector, taking its model ids from the provider's own {@code /models}.
+     *
+     * <h2>Why the catalog is not enough for some providers</h2>
+     *
+     * <p>The catalog lists what a provider offers in general. A provider whose offer depends on the
+     * account -- a subscription plan that covers some models and not others -- is the only authority
+     * on what one key may call, and the catalog falls behind it as models are added. Z.ai's GLM
+     * Coding Plan served {@code glm-5.1} while the catalog's entry for the plan no longer named it,
+     * so the tool offered a list that left out a model the user was paying for.</p>
+     *
+     * <p>The provider's list names models and nothing more, so each one is still described from the
+     * catalog: from this connector's own entry, or from a related entry that publishes the same model
+     * -- the plan's models are the platform's models, and the platform's entry names them.</p>
+     *
+     * @param related catalog ids whose entries describe the same models, in the order to ask them
+     * @return a copy of this connector that lists its models live
+     */
+    public ProviderConnector listingModelsLive(List<String> related) {
+        return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
+                                     staticHeaders, wire, retention, true, related);
+    }
+
+    /**
+     * Whether the provider's own {@code /models} decides which models this connector offers.
+     *
+     * @return {@code true} when it does; {@code false} when the catalog does
+     */
+    public boolean listsModelsLive() {
+        return modelsListedLive;
+    }
+
+    /**
+     * Catalog ids whose entries describe this connector's models, beyond its own.
+     *
+     * @return the ids, in the order to ask them; empty for nearly every connector
+     */
+    public List<String> getRelatedCatalogIds() {
+        return relatedCatalogIds;
     }
 
     /** What this provider can be asked about keeping the request, and how to ask it. */

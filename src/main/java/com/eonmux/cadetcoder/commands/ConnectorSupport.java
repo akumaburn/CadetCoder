@@ -270,11 +270,59 @@ final class ConnectorSupport {
      * @return its models, empty when neither the catalogue nor the provider would say
      */
     private static List<ModelsDevModel> models(ProviderConnector c, Map<String, String> options) {
+        if (c.listsModelsLive()) {
+            List<ModelsDevModel> live = liveModels(c, options);
+            if (!live.isEmpty()) {
+                return live;
+            }
+        }
         ModelsDevProvider cat = ModelCatalog.getInstance().getProvider(c.getId());
         if (cat != null && !cat.getModels().isEmpty()) {
             return new ArrayList<>(cat.getModels().values());
         }
         return new ArrayList<>(ProviderModelListing.fetch(c, resolvedKey(c), options));
+    }
+
+    /**
+     * The models a live-listing connector's provider names, each described from the catalogue.
+     *
+     * <p>Asked only with a key. These providers authenticate their list, so without one the answer
+     * is a refusal, and the catalogue is the better answer. The catalogue is also the answer when
+     * the provider cannot be reached. A model the catalogue does not describe is still offered, by
+     * its id, because the provider has just said the key may call it.</p>
+     *
+     * @param c       a connector for which {@link ProviderConnector#listsModelsLive()} holds
+     * @param options the options a listing goes by
+     * @return the models in the provider's order, or empty when it could not be asked
+     */
+    private static List<ModelsDevModel> liveModels(ProviderConnector c, Map<String, String> options) {
+        String key = resolvedKey(c);
+        if (key == null || key.isBlank()) {
+            return List.of();
+        }
+        List<ModelsDevModel> described = new ArrayList<>();
+        for (ModelsDevModel listed : ProviderModelListing.fetch(c, key, options)) {
+            ModelsDevModel known = ModelCatalog.getInstance().findServedModel(c.getId(), listed.getId());
+            described.add(known == null ? listed : under(listed.getId(), known));
+        }
+        return described;
+    }
+
+    /**
+     * A catalogue entry, under the id the provider listed it by.
+     *
+     * <p>The id is what {@code models use} sends back to the provider, so it stays the provider's
+     * spelling even when the entry was found under another, such as a different letter case.</p>
+     */
+    private static ModelsDevModel under(String id, ModelsDevModel known) {
+        if (id.equals(known.getId())) {
+            return known;
+        }
+        ModelsDevModel renamed = new ModelsDevModel();
+        renamed.setId(id);
+        renamed.setName(known.getName() != null ? known.getName() : id);
+        renamed.setLimit(known.getLimit());
+        return renamed;
     }
 
     /**

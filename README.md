@@ -337,9 +337,15 @@ subscription. Pick the connector that matches how the account pays.
 
 ```bash
 export ZAI_API_KEY=...
-cadet models zai-coding-plan               # the GLM models the plan covers
+cadet models zai-coding-plan               # the GLM models this key may call
 cadet models use zai-coding-plan glm-4.7
 ```
+
+With a key, `cadet models <connector>` lists the models that the platform's
+`/models` names for that key. The catalog can lag behind a plan. Each model
+takes its name and context window from the catalog, from any of the four GLM
+entries. Without a key, or when the platform does not answer, the list comes
+from the catalog.
 
 A request to a balance endpoint is charged to the balance even when the account
 has a Coding Plan. With an empty balance the platform answers HTTP 429 with

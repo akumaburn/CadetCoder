@@ -1023,7 +1023,16 @@ as `ConnectorProtocol`:
 
 `ai/providers/ZaiPlatform` holds the ids of the four GLM connectors (`zai`,
 `zai-coding-plan`, `zhipuai`, `zhipuai-coding-plan`) and the Z.ai business
-codes. The ids match the models.dev catalog, which lists their models.
+codes. The ids match the models.dev catalog.
+
+A connector built with `ProviderConnector.listingModelsLive` takes its model
+ids from the provider's `{base}/models`, because the account's plan decides
+which models a key may call. The four GLM connectors are built that way.
+`ConnectorSupport.models` asks the provider only when a key resolves, and falls
+back to the catalog when the provider gives no answer. Each listed id is
+described by `ModelCatalog.findServedModel`. That method also searches the
+connector's related catalog ids, so a model that the plan's catalog entry does
+not name still gets its name and window from the platform's entry.
 
 `ai/catalog/` loads and caches the models.dev catalog. `auth/CredentialResolver`
 resolves a connector's key, and takes the first of these that is set:
