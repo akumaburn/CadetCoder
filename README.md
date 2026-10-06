@@ -511,16 +511,29 @@ automatically. Others cache only what the request explicitly marks.
 
 | Provider or protocol | What CadetCoder sends | Why |
 |---|---|---|
-| Anthropic Messages | `cache_control: {"type":"ephemeral"}` on the system block and the user block | Anthropic caches nothing without a breakpoint |
-| Bedrock Converse | a `{"cachePoint":{"type":"default"}}` block after the system and user content | the same, in Converse's spelling |
+| Anthropic Messages | `cache_control: {"type":"ephemeral"}` on the system blocks and the user block | Anthropic caches nothing without a breakpoint |
+| Bedrock Converse | a `{"cachePoint":{"type":"default"}}` block after each system block and after the user content | the same, in Converse's spelling |
 | OpenRouter | `cache_control` inside the content parts | OpenRouter forwards it to the Anthropic and Gemini models it proxies |
-| OpenAI and OpenAI-compatible providers | nothing | these match a shared prefix automatically, and an unrecognised field would risk a rejection |
+| OpenAI and Azure OpenAI, GPT-5.6 and later | `prompt_cache_breakpoint: {"mode":"explicit"}` at the end of the shared opening | these mark the latest message themselves, and reuse a prefix inside a message only up to a breakpoint |
+| OpenAI before GPT-5.6, and other OpenAI-compatible providers | nothing | these match a shared prefix automatically, and the models before GPT-5.6 reject the breakpoint field |
 | Google Generative AI | nothing | implicit caching is automatic, and the explicit mode is a separate stateful `cachedContents` resource rather than a per-request marker |
 
-CadetCoder uses two breakpoints where they apply: the system prompt, which is
-stable for the whole run, and the end of the conversation so far. The second
-breakpoint writes the whole prompt into the cache. The next turn appends to it,
-reads everything from cache, and pays only for what it added.
+CadetCoder uses up to three breakpoints where they apply:
+
+1. The end of the shared opening: the operating principles and the command
+   list. The system prompt is sent as two blocks, cut at that point. A run of
+   another kind, such as `chat` after `agent`, reads the opening from cache.
+   A system prompt without the command list stays one block.
+2. The end of the system prompt, which is stable for the whole run.
+3. The end of the conversation so far. This writes the whole prompt into the
+   cache. The next turn appends to it, reads everything from cache, and pays
+   only for what it added.
+
+A provider ignores a breakpoint on a prefix shorter than the model's minimum.
+The shared opening is a few thousand tokens. Anthropic's minimum is 4,096
+tokens for Opus 4.5, Opus 4.6 and Haiku 4.5, so those models may not cache the
+opening on its own. GitHub Copilot is not marked, because it publishes no documentation
+for a cache field.
 
 Breakpoint support depends on the model rather than on the provider alone.
 Bedrock rejects `cachePoint` outright for models that do not implement it.

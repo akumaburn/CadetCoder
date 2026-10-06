@@ -2,6 +2,7 @@ package com.eonmux.cadetcoder.net;
 
 import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.PromptImage;
+import com.eonmux.cadetcoder.ai.SharedOpening;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -86,7 +87,18 @@ final class ChatCompletionMessages {
      * @return the {@code messages} array
      */
     static List<Map<String, Object>> of(PromptData promptData, boolean cacheBreakpoints) {
-        return build(promptData, cacheBreakpoints, PromptImage::dataUrl);
+        return of(promptData, cacheBreakpoints ? InlineCacheMarker.CACHE_CONTROL : InlineCacheMarker.NONE);
+    }
+
+    /**
+     * The messages to send.
+     *
+     * @param promptData the request
+     * @param marker     how the request marks its cacheable prefixes
+     * @return the {@code messages} array
+     */
+    static List<Map<String, Object>> of(PromptData promptData, InlineCacheMarker marker) {
+        return build(promptData, marker, PromptImage::dataUrl);
     }
 
     /**
@@ -97,25 +109,38 @@ final class ChatCompletionMessages {
      * @return the {@code messages} array, safe to write to a log
      */
     static List<Map<String, Object>> elided(PromptData promptData, boolean cacheBreakpoints) {
-        return build(promptData, cacheBreakpoints,
-                     image -> "data:" + image.mediaType() + ";base64," + ELIDED);
+        return elided(promptData,
+                      cacheBreakpoints ? InlineCacheMarker.CACHE_CONTROL : InlineCacheMarker.NONE);
     }
 
     /**
-     * @param promptData       the request
-     * @param cacheBreakpoints whether the text carries an ephemeral cache breakpoint
-     * @param urlOf            how an image renders as a URL
+     * The same messages, with each image's bytes replaced by a note.
+     *
+     * @param promptData the request
+     * @param marker     how the request marks its cacheable prefixes
+     * @return the {@code messages} array, safe to write to a log
+     */
+    static List<Map<String, Object>> elided(PromptData promptData, InlineCacheMarker marker) {
+        return build(promptData, marker, image -> "data:" + image.mediaType() + ";base64," + ELIDED);
+    }
+
+    /**
+     * @param promptData the request
+     * @param marker     how the request marks its cacheable prefixes
+     * @param urlOf      how an image renders as a URL
      * @return the {@code messages} array
      */
-    private static List<Map<String, Object>> build(PromptData promptData, boolean cacheBreakpoints,
+    private static List<Map<String, Object>> build(PromptData promptData, InlineCacheMarker marker,
                                                    Function<PromptImage, String> urlOf) {
+        boolean everyPart = marker == InlineCacheMarker.CACHE_CONTROL;
         List<Map<String, Object>> messages = new ArrayList<>();
         List<PromptImage>         images   = promptData.getImages();
         String system = promptData.getSystemPrompt();
         if (system != null && !system.isEmpty()) {
-            messages.add(message("system", system, cacheBreakpoints));
+            messages.add(marker == InlineCacheMarker.NONE ? message("system", system, false)
+                                                          : markedSystem(system, marker));
         }
-        messages.add(userMessage(promptData.getUserPrompt(), images, cacheBreakpoints, urlOf));
+        messages.add(userMessage(promptData.getUserPrompt(), images, everyPart, urlOf));
         return messages;
     }
 
@@ -142,6 +167,37 @@ final class ChatCompletionMessages {
         }
         Map<String, Object> msg = new LinkedHashMap<>();
         msg.put("role", "user");
+        msg.put("content", parts);
+        return msg;
+    }
+
+    /**
+     * The system message, marked.
+     *
+     * <p>Cut in two when the prompt opens with the opening every loop shares, so a marker at its end
+     * lets a request from another loop read it from the cache. With {@code cache_control} both parts
+     * are marked. With an OpenAI breakpoint only the opening is, and a prompt without the opening
+     * stays a plain string, because the provider marks the end of the latest message itself.</p>
+     */
+    private static Map<String, Object> markedSystem(String system, InlineCacheMarker marker) {
+        List<String> pieces = SharedOpening.split(system);
+        if (marker == InlineCacheMarker.OPENING_BREAKPOINT && pieces.size() == 1) {
+            return message("system", system, false);
+        }
+        List<Map<String, Object>> parts = new ArrayList<>();
+        for (int i = 0; i < pieces.size(); i++) {
+            if (marker == InlineCacheMarker.CACHE_CONTROL) {
+                parts.add(textPart(pieces.get(i), true));
+            } else if (i == 0) {
+                Map<String, Object> opening = textPart(pieces.get(i), false);
+                opening.put("prompt_cache_breakpoint", Map.of("mode", "explicit"));
+                parts.add(opening);
+            } else {
+                parts.add(textPart(pieces.get(i), false));
+            }
+        }
+        Map<String, Object> msg = new LinkedHashMap<>();
+        msg.put("role", "system");
         msg.put("content", parts);
         return msg;
     }

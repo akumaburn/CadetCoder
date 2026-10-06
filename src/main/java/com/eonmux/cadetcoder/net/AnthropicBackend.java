@@ -5,6 +5,7 @@ import com.eonmux.cadetcoder.ai.metrics.ReportedUsage;
 import com.eonmux.cadetcoder.ai.metrics.TokenUsage;
 import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.PromptImage;
+import com.eonmux.cadetcoder.ai.SharedOpening;
 import com.eonmux.cadetcoder.ai.providers.AuthHeaders;
 import com.eonmux.cadetcoder.ai.providers.AuthScheme;
 import com.eonmux.cadetcoder.logging.CadetLogger;
@@ -203,7 +204,8 @@ public class AnthropicBackend extends AbstractLLMBackend {
      * spellings are valid Anthropic input; the array form is required only because a marker has
      * nowhere to live on a bare string.</p>
      *
-     * <p>Two breakpoints, well inside Anthropic's limit of four. The system block is the large stable
+     * <p>Two breakpoints, or three when the system prompt opens with the shared opening; see
+     * {@link #markedSystem}. Anthropic's limit is four. The system block is the large stable
      * prefix that never changes within a run. The user block is the end of the conversation so far:
      * marking it writes the whole prompt into the cache, so the NEXT turn -- which appends to it --
      * reads everything sent this turn from cache and pays only for what it added. That is the moving
@@ -250,9 +252,7 @@ public class AnthropicBackend extends AbstractLLMBackend {
         body.put("temperature", temperature);
 
         if (system != null && !system.isEmpty()) {
-            body.put("system", cacheBreakpoints
-                    ? List.of(textBlock(system, true))
-                    : system);
+            body.put("system", cacheBreakpoints ? markedSystem(system) : system);
         }
 
         Map<String, Object> userMsg = new LinkedHashMap<>();
@@ -275,6 +275,24 @@ public class AnthropicBackend extends AbstractLLMBackend {
         body.put("messages", List.of(userMsg));
         body.putAll(extraBody);
         return body;
+    }
+
+    /**
+     * The system prompt as marked blocks.
+     *
+     * <p>One block, or two when the prompt opens with the opening every loop shares: a marker at
+     * its end lets a request from another loop read it from the cache. With the marker at the end
+     * of the user block, that is three of the four Anthropic permits.</p>
+     *
+     * @param system the system prompt
+     * @return its blocks, each carrying a breakpoint
+     */
+    private static List<Map<String, Object>> markedSystem(String system) {
+        List<Map<String, Object>> blocks = new ArrayList<>();
+        for (String part : SharedOpening.split(system)) {
+            blocks.add(textBlock(part, true));
+        }
+        return blocks;
     }
 
     /**

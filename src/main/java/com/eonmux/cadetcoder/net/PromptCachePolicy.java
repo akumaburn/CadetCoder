@@ -22,11 +22,18 @@ import java.util.concurrent.ConcurrentHashMap;
  *       models that support it. Without the marker these providers cache nothing, however stable the
  *       prefix is.</li>
  *   <li><b>Implicit</b> - the provider matches a shared leading prefix automatically and there is
- *       nothing to send. <b>OpenAI Chat Completions</b> and the OpenAI-compatible providers behave
- *       this way, as does <b>Google Generative AI</b> (its other mode, explicit context caching,
+ *       nothing to send. <b>OpenAI Chat Completions</b> before GPT-5.6 and the OpenAI-compatible
+ *       providers behave this way, as does <b>Google Generative AI</b> (its other mode, explicit context caching,
  *       is a separate stateful resource API rather than a per-request marker, so it is out of scope
  *       here). For these, a stable append-only prompt IS the whole implementation.</li>
+ *   <li><b>Both</b> - OpenAI's GPT-5.6 and later families mark the latest message themselves and
+ *       also take {@code "prompt_cache_breakpoint": {"mode": "explicit"}} on a text part, which is
+ *       how the opening every loop shares is reused; see {@code OpenAiCacheBreakpoints}.</li>
  * </ul>
+ *
+ * <p>Where a system prompt opens with the opening every loop shares, a marker goes at the opening's
+ * end; see {@code com.eonmux.cadetcoder.ai.SharedOpening}. The explicit providers also keep their
+ * marker at the end of the system prompt, and OpenAI marks the latest message itself.</p>
  *
  * <h2>Why this is defensive</h2>
  *
@@ -70,7 +77,7 @@ public final class PromptCachePolicy {
 
     /** Substrings that identify a rejection caused by the cache markers rather than by the prompt. */
     private static final String[] REJECTION_MARKERS = {
-            "cache_control", "cachepoint", "cache point", "cache_point",
+            "cache_control", "cachepoint", "cache point", "cache_point", "prompt_cache_breakpoint",
             "prompt caching", "prompt_caching", "caching is not supported"
     };
 

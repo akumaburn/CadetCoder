@@ -109,19 +109,14 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
 
         String url = appendQuery(apiEndpoint + "/chat/completions");
 
-        // Only the providers that FORWARD an Anthropic-style breakpoint need one in the body. The
-        // rest of this protocol family caches a shared prefix automatically, so the correct
-        // implementation for them is to send nothing extra.
-        boolean cacheBreakpoints = supportsInlineCacheBreakpoints()
-                && PromptCachePolicy.shouldMark(providerId(), modelName, promptChars(promptData));
+        InlineCacheMarker marker = inlineCacheMarker(promptChars(promptData));
 
-        HttpResponse<String> response =
-                send(url, promptData, temperature, maxTokens, timeout, cacheBreakpoints);
+        HttpResponse<String> response = send(url, promptData, temperature, maxTokens, timeout, marker);
 
-        if (response.statusCode() == 400 && cacheBreakpoints
+        if (response.statusCode() == 400 && marker != InlineCacheMarker.NONE
                 && PromptCachePolicy.looksLikeCacheRejection(response.body())) {
             PromptCachePolicy.disableFor(providerId(), modelName);
-            response = send(url, promptData, temperature, maxTokens, timeout, false);
+            response = send(url, promptData, temperature, maxTokens, timeout, InlineCacheMarker.NONE);
         }
 
         if (response.statusCode() != 200) {
@@ -149,6 +144,21 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
      */
     Map<String, Object> buildBody(PromptData promptData, float temperature, int maxTokens,
                                   boolean cacheBreakpoints) {
+        return buildBody(promptData, temperature, maxTokens,
+                         cacheBreakpoints ? InlineCacheMarker.CACHE_CONTROL : InlineCacheMarker.NONE);
+    }
+
+    /**
+     * Builds the Chat Completions request body, marked the way this provider takes it.
+     *
+     * @param promptData  the prompt
+     * @param temperature asked-for randomness
+     * @param maxTokens   the output ceiling, or {@link OutputBudget#UNLIMITED} for none
+     * @param marker      how to mark the cacheable prefixes
+     * @return the request body, ready to serialize
+     */
+    Map<String, Object> buildBody(PromptData promptData, float temperature, int maxTokens,
+                                  InlineCacheMarker marker) {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", modelName);
         body.put("temperature", temperature);
@@ -158,17 +168,16 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
         if (OutputBudget.isLimited(maxTokens)) {
             body.put("max_tokens", maxTokens);
         }
-        body.put("messages", buildMessages(promptData, cacheBreakpoints));
+        body.put("messages", ChatCompletionMessages.of(promptData, marker));
         body.putAll(extraBody);
         return body;
     }
 
     /** Builds and sends one Chat Completions request. */
     private HttpResponse<String> send(String url, PromptData promptData, float temperature,
-                                      int maxTokens, int timeout, boolean cacheBreakpoints)
+                                      int maxTokens, int timeout, InlineCacheMarker marker)
             throws Exception {
-        String json = MAPPER.writeValueAsString(
-                buildBody(promptData, temperature, maxTokens, cacheBreakpoints));
+        String json = MAPPER.writeValueAsString(buildBody(promptData, temperature, maxTokens, marker));
 
         HttpRequest.Builder builder = HttpRequests.to(URI.create(url))
                 .timeout(Duration.ofSeconds(timeout))
@@ -196,6 +205,29 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
      */
     boolean supportsInlineCacheBreakpoints() {
         return "openrouter".equalsIgnoreCase(providerId());
+    }
+
+    /**
+     * How this request marks its cacheable prefixes.
+     *
+     * <p>OpenRouter takes {@code cache_control}; see {@link #supportsInlineCacheBreakpoints()}.
+     * OpenAI and Azure OpenAI take an explicit breakpoint on GPT-5.6 and later; see
+     * {@link OpenAiCacheBreakpoints}. Every other provider on this protocol caches a shared prefix by
+     * itself, and an unfamiliar field would only risk a rejection.</p>
+     *
+     * @param promptChars the prompt's size, since a prompt too small to cache is not marked
+     * @return the marker to use
+     */
+    InlineCacheMarker inlineCacheMarker(int promptChars) {
+        if (!PromptCachePolicy.shouldMark(providerId(), modelName, promptChars)) {
+            return InlineCacheMarker.NONE;
+        }
+        if (supportsInlineCacheBreakpoints()) {
+            return InlineCacheMarker.CACHE_CONTROL;
+        }
+        return OpenAiCacheBreakpoints.accepts(providerId(), modelName)
+                ? InlineCacheMarker.OPENING_BREAKPOINT
+                : InlineCacheMarker.NONE;
     }
 
     /** Total prompt size, used only to skip marking prompts too small to be cacheable. */

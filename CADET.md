@@ -339,8 +339,18 @@ breakpoint:
 
 - Anthropic and OpenRouter use `cache_control`.
 - Bedrock uses `cachePoint`.
-- The OpenAI and Google families get nothing, because they match a shared prefix
-  automatically.
+- OpenAI and Azure OpenAI get `prompt_cache_breakpoint` on GPT-5.6 and later
+  families, at the end of the shared opening only. `OpenAiCacheBreakpoints`
+  reads the family from the model id. Earlier models reject the field.
+- The other OpenAI-compatible providers and Google get nothing, because they
+  match a shared prefix automatically.
+
+`ai/SharedOpening` finds where the opening that every loop shares ends: the
+principles and `CommandCatalog.promptBlock`. A backend that marks a breakpoint
+cuts the system prompt there into two marked parts. The point is found in the
+text, so `PromptData` carries nothing extra, and a prompt without the opening
+is marked as one part. `InlineCacheMarker` names the three ways a Chat
+Completions request can be marked.
 
 Support varies by model. A rejection that names a cache field therefore latches
 breakpoints off for that provider and retries once without them, so a request

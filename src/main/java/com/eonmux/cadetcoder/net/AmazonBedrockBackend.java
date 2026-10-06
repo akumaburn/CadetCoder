@@ -5,6 +5,7 @@ import com.eonmux.cadetcoder.ai.metrics.ReportedUsage;
 import com.eonmux.cadetcoder.ai.metrics.TokenUsage;
 import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.PromptImage;
+import com.eonmux.cadetcoder.ai.SharedOpening;
 import com.eonmux.cadetcoder.auth.AwsSigV4Signer;
 import com.eonmux.cadetcoder.logging.CadetLogger;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -260,10 +261,14 @@ public class AmazonBedrockBackend extends AbstractLLMBackend {
         body.put("messages", List.of(userMsg));
 
         if (system != null && !system.isEmpty()) {
+            // Cut where the opening every loop shares ends, when it does, so a request from another
+            // loop can read that opening from the cache. Three cache points, of the four allowed.
             List<Map<String, Object>> systemContent = new ArrayList<>();
-            systemContent.add(Map.of("text", system));
-            if (cacheBreakpoints) {
-                systemContent.add(cachePoint());
+            for (String part : cacheBreakpoints ? SharedOpening.split(system) : List.of(system)) {
+                systemContent.add(Map.of("text", part));
+                if (cacheBreakpoints) {
+                    systemContent.add(cachePoint());
+                }
             }
             body.put("system", systemContent);
         }
