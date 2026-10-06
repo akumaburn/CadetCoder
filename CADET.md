@@ -302,6 +302,14 @@ and re-asserts ownership after every `context.putAll`, so no step can swap in a
 shorter one. Nothing volatile may go anywhere but the end.
 `PromptCachePrefixTest` pins the invariant.
 
+A step that sends a turn of its own must render it with
+`IterativeExecutor.render` and append it to the transcript. `chat` sends its
+first turn from the `analyze_request` step. `ChatContext` carries the live
+transcript for that, and the step appends the request entry and the model's
+reply. Before this, turn 2 shared only the system prompt with turn 1.
+`EachChatTurnRepeatsTheTurnBeforeItTest` checks that every chat request starts
+with the whole of the previous one.
+
 `ai/SystemPromptProvider` loads the `system` prompt template, and
 `AIManager.complete` puts it in front of whatever system prompt the caller
 supplied. Every completion passes through that one point, so a command cannot

@@ -88,6 +88,17 @@ public class ChatContext {
      */
     private ActionLoopGuard loopGuard = new ActionLoopGuard();
 
+    /**
+     * The executor's transcript of this run, the live list rather than a copy.
+     *
+     * <p>Carried through {@link #toMap()} like the loop guard, and for the same reason: a fresh
+     * context is rebuilt from the map on every step, including the steps the chat runs within one
+     * executor step. The first turn of a chat is sent by the chat itself, and has to reach this list
+     * so that the executor's next turn repeats it. {@code null} when the step runs outside an
+     * executor.</p>
+     */
+    private List<String> transcript;
+
     /** Map of found files (filename -> full path) for path resolution and substitution */
     private Map<String, String> foundFiles = new HashMap<>();
 
@@ -98,6 +109,15 @@ public class ChatContext {
      */
     public ActionLoopGuard getLoopGuard() {
         return loopGuard;
+    }
+
+    /**
+     * Returns the executor's transcript of this run.
+     *
+     * @return the live list, or {@code null} when the step runs outside an executor
+     */
+    public List<String> getTranscript() {
+        return transcript;
     }
 
     /**
@@ -288,6 +308,9 @@ public class ChatContext {
             map.put("actionHistory", actionHistory);
         }
         map.put("loopGuard", loopGuard);
+        if (transcript != null) {
+            map.put("conversationHistory", transcript);
+        }
         if (foundFiles != null) {
             map.put("foundFiles", foundFiles);
         }
@@ -354,6 +377,8 @@ public class ChatContext {
         if (files != null) {
             context.setFoundFiles(files);
         }
+
+        context.transcript = IterativeExecutor.transcriptIn(map);
 
         // The loop guard must survive across steps: a fresh ChatContext is built here on EVERY step,
         // so a guard that were only a field would be reset before it had observed anything.

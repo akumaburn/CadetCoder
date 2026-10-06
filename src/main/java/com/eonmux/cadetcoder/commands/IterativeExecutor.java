@@ -371,14 +371,30 @@ public class IterativeExecutor {
      * previous turn's and a provider can serve the shared prefix from cache. See
      * {@link #buildPromptWithHistory}.</p>
      */
-    @SuppressWarnings ("unchecked")
     private static List<String> transcriptOf(Map<String, Object> context) {
-        List<String> transcript = (List<String>) context.get("conversationHistory");
+        List<String> transcript = transcriptIn(context);
         if (transcript == null) {
             transcript = new ArrayList<>();
             context.put("conversationHistory", transcript);
         }
         return transcript;
+    }
+
+    /**
+     * The live transcript a step's context carries, when it carries one.
+     *
+     * <p>The list itself, not a copy: a step that sends a turn of its own appends that turn here, so
+     * the executor's next turn repeats it. The executor creates the list as a {@code List<String>}
+     * and owns it, which is what makes the cast safe.</p>
+     *
+     * @param context a run's context, or a step's
+     * @return the transcript, or {@code null} when the context holds none
+     */
+    @SuppressWarnings ("unchecked")
+    static List<String> transcriptIn(Map<String, Object> context) {
+        return context != null && context.get("conversationHistory") instanceof List<?> list
+               ? (List<String>) list
+               : null;
     }
 
     /**
@@ -449,7 +465,7 @@ public class IterativeExecutor {
     private static void recordTurn(List<String> transcript, String llmResponse,
                                    IterativeCommand.StepResult stepResult, String nextPrompt) {
         if (llmResponse != null) {
-            transcript.add("LLM: " + llmResponse);
+            transcript.add(replyEntry(llmResponse));
         }
         transcript.add("System: "
                        + StepOutput.condenseForTranscript(stepResult.getOutput(), nextPrompt));
@@ -618,7 +634,20 @@ public class IterativeExecutor {
         if (history == null || history.isEmpty()) {
             return currentPrompt == null ? "" : currentPrompt;
         }
+        return render(history);
+    }
 
+    /**
+     * Renders transcript entries as the text of one prompt, oldest first.
+     *
+     * <p>The one rendering every turn uses. A command that sends a turn of its own before the
+     * executor sends any (the first turn of {@code chat}) renders it here too, so the executor's next
+     * turn begins with exactly the text that turn sent.</p>
+     *
+     * @param history the entries, oldest first
+     * @return each entry followed by a line break
+     */
+    static String render(List<String> history) {
         StringBuilder prompt = new StringBuilder();
         for (String entry : history) {
             if (entry != null) {
@@ -626,6 +655,16 @@ public class IterativeExecutor {
             }
         }
         return prompt.toString();
+    }
+
+    /**
+     * The transcript entry for one reply of the model.
+     *
+     * @param reply what the model said
+     * @return the entry
+     */
+    static String replyEntry(String reply) {
+        return "LLM: " + reply;
     }
 
     /** What a command is held to when it states no contract of its own. */

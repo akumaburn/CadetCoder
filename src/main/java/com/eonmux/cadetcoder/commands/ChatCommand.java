@@ -173,7 +173,10 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
         // Build AI prompt to analyze the request and determine actions
         logStep("Building AI prompt for request analysis");
         String systemPrompt = buildSystemPrompt();
-        String userPrompt = buildUserPrompt(userReq);
+        String request      = requestEntry(userReq);
+        List<String> transcript = context.getTranscript() != null ? context.getTranscript()
+                                                                  : detachedTranscript();
+        String userPrompt = firstTurnPrompt(transcript, request);
 
         try {
             // Check for interruption before AI call
@@ -195,6 +198,12 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
             long aiStartTime = System.currentTimeMillis();
             String aiResponse = AIManager.getInstance().complete(promptData, aiParams);
             long aiDuration = System.currentTimeMillis() - aiStartTime;
+            // Recorded before anything acts on the reply, so every route out of this step leaves the
+            // turn in the transcript and the executor's next request begins with it.
+            transcript.add(request);
+            if (aiResponse != null) {
+                transcript.add(IterativeExecutor.replyEntry(aiResponse));
+            }
 
             logAIComplete("chat-analysis", aiResponse, aiDuration);
 
@@ -537,21 +546,52 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                                     .build());
     }
 
-    private String buildUserPrompt(String userRequest) {
+    /**
+     * The first request of a chat: the transcript so far, then the user's request.
+     *
+     * <p>Rendered by {@link IterativeExecutor#render} from the same list the executor renders every
+     * later request from, so the next request begins with exactly this text and a provider can serve
+     * it from its cache. The transcript already opens with a resumed session's conversation and, for
+     * a resumed run, with what that run did; see {@code IterativeExecutor.newContext} and
+     * {@link #priorTranscript()}. Both therefore lead the request rather than follow it, and are
+     * stable across turns.</p>
+     *
+     * @param transcript the transcript before this request
+     * @param request    the request entry, from {@link #requestEntry}
+     * @return the user prompt to send
+     */
+    private static String firstTurnPrompt(List<String> transcript, String request) {
+        List<String> sent = new ArrayList<>(transcript);
+        sent.add(request);
+        return IterativeExecutor.render(sent);
+    }
+
+    /**
+     * The transcript a run starts with, for a step that runs outside an executor.
+     *
+     * <p>The same entries {@code IterativeExecutor.newContext} seeds a run with, so the first request
+     * reads the same either way. Nothing reads what is appended to it afterwards.</p>
+     */
+    private List<String> detachedTranscript() {
+        List<String> transcript = new ArrayList<>(
+                com.eonmux.cadetcoder.session.ResumedContext.forCurrentSession());
+        transcript.addAll(priorTranscript());
+        return transcript;
+    }
+
+    /**
+     * The transcript entry that puts the user's request to the model.
+     *
+     * @param userRequest the request as the user wrote it
+     * @return the entry
+     */
+    private String requestEntry(String userRequest) {
         StringBuilder prompt = new StringBuilder();
-
-        // A resumed session's conversation LEADS, before the request that continues it. This call
-        // decides what to do with the user's follow-up, so making it without the thing being
-        // followed up is the one place restored context matters most -- and it is stable across
-        // turns, so leading with it also keeps it inside the cacheable prefix.
-        for (String entry : com.eonmux.cadetcoder.session.ResumedContext.forCurrentSession()) {
-            prompt.append(entry).append("\n");
-        }
-
         prompt.append("User request: ").append(userRequest).append("\n\n");
 
         if (resumed != null) {
-            prompt.append(resumedWork()).append("\n");
+            // What the interrupted run did is already in the transcript ahead of this entry.
+            prompt.append(ResumeBriefing.CARRY_ON).append("\n");
         }
 
         // Add context about the current project
@@ -569,23 +609,6 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
 
         prompt.append("\nDetermine the appropriate actions to fulfill this request.");
         return prompt.toString();
-    }
-
-    /**
-     * What an interrupted run did, for the first request of the run that carries it on.
-     *
-     * <p>Later requests are built from the transcript, which starts with the same record; see
-     * {@link #priorTranscript()}. The first one is built here, so it has to be told as well.</p>
-     */
-    private String resumedWork() {
-        StringBuilder work = new StringBuilder(interruptionNote()).append("\n");
-        if (!resumed.transcript().isEmpty()) {
-            work.append("What that run did, oldest first:\n");
-            for (String entry : resumed.transcript()) {
-                work.append(entry).append("\n");
-            }
-        }
-        return work.append(ResumeBriefing.CARRY_ON).append("\n").toString();
     }
 
     /** Tells a resumed run that it carries on an earlier one. */
