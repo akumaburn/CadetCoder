@@ -1,7 +1,6 @@
 package com.eonmux.cadetcoder.commands;
 
 import com.eonmux.cadetcoder.CommandRegistry;
-import com.eonmux.cadetcoder.agents.WorkerRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.logging.DebugLogger;
@@ -368,7 +367,7 @@ public class InteractiveShell implements InputHandler {
     // ---------------------------------------------------------------------
 
     /** What the shell does with a line typed while it may or may not be busy. */
-    enum Admission { RUN, REFUSE_STILL_RUNNING, REFUSE_STILL_STOPPING }
+    enum Admission { RUN, QUEUE, REFUSE_STILL_STOPPING }
 
     /**
      * Decides whether a newly typed line may start now.
@@ -381,18 +380,28 @@ public class InteractiveShell implements InputHandler {
      * over the same singleton {@code Command} objects. Commands that never poll for interruption
      * made the window last as long as they did.</p>
      *
+     * <p>A line typed while a command runs is queued, never started beside it. A line typed while
+     * the command is stopping is refused: the stop drops the queue, and a line queued after that
+     * would run once the stop completes, which nobody asked for.</p>
+     *
      * <p>Static and pure so the decision is testable without standing up a TUI, as the key
      * classifications in {@link ShellKeys} are.</p>
      *
+     * <p>An idle shell with lines still queued queues the new line behind them. The command thread
+     * ends a moment before the shell's tick starts the next queued line, and a line run at once in
+     * that moment would run before the lines sent ahead of it.</p>
+     *
      * @param processing         whether a command thread is still running
      * @param interruptRequested whether that command has already been asked to stop
+     * @param queued             how many lines wait their turn
      * @return what to do with the line
      */
-    static Admission classifyNewCommand(boolean processing, boolean interruptRequested) {
+    static Admission classifyNewCommand(boolean processing, boolean interruptRequested,
+                                        int queued) {
         if (!processing) {
-            return Admission.RUN;
+            return queued > 0 ? Admission.QUEUE : Admission.RUN;
         }
-        return interruptRequested ? Admission.REFUSE_STILL_STOPPING : Admission.REFUSE_STILL_RUNNING;
+        return interruptRequested ? Admission.REFUSE_STILL_STOPPING : Admission.QUEUE;
     }
 
     private boolean handleEvent(Event event, TuiRunner r) {
@@ -417,6 +426,9 @@ public class InteractiveShell implements InputHandler {
                 // nothing in this process writes them, and a job is a separate process entirely. So
                 // a pane watching live work froze on screen the moment the shell went idle. Redrawn
                 // on the tick instead, which also turns the spinner in the heading.
+                redraw = true;
+            }
+            if (startTheNextQueuedLine()) {
                 redraw = true;
             }
             if (dirty) {
@@ -809,11 +821,11 @@ public class InteractiveShell implements InputHandler {
             return;
         }
 
-        Admission admission = classifyNewCommand(processing, interruptRequested);
-        if (admission != Admission.RUN) {
-            appendSystemNotice(admission == Admission.REFUSE_STILL_STOPPING
-                    ? "The previous command is still stopping. Press Ctrl+Q to quit if it will not."
-                    : "A command is running. Press F2 to interrupt it first.");
+        Admission admission = classifyNewCommand(processing, interruptRequested,
+                                                 QueuedMessages.size());
+        if (admission == Admission.REFUSE_STILL_STOPPING) {
+            appendSystemNotice(
+                    "The previous command is still stopping. Press Ctrl+Q to quit if it will not.");
             return;
         }
 
@@ -834,6 +846,54 @@ public class InteractiveShell implements InputHandler {
         commandHistory.add(recorded);
         historyIndex = commandHistory.size();
 
+        if (admission == Admission.QUEUE) {
+            queue(typed, recorded, command);
+            return;
+        }
+        start(typed, recorded, command);
+    }
+
+    /**
+     * Keeps a line typed while a command runs, for the conversation the command is having or for
+     * when the command ends.
+     *
+     * <p>A message for the model joins a running conversation at its next turn. A command, or a
+     * line with a picture, waits for the command to end: a picture is attached to a whole command,
+     * and a turn of somebody else's run is not one.</p>
+     */
+    private void queue(String typed, String recorded, String command) {
+        InputRouter.Routed routed = InputRouter.route(
+                typed, command, registry.getCommands().keySet(), InputRouter.Mode.CONVERSATION);
+        boolean message = !routed.isEmpty() && !routed.isCommand()
+                          && pastes.picturesIn(typed).isEmpty();
+        int waiting = QueuedMessages.add(new QueuedMessages.Line(
+                typed, recorded, command, message ? routed.getText() : null));
+        appendSystemNotice("Queued: " + recorded
+                           + (waiting > 1 ? " (" + waiting + " waiting)" : ""));
+        dirty = true;
+    }
+
+    /** Starts the next queued line once the shell is idle and nothing is being asked. */
+    private boolean startTheNextQueuedLine() {
+        if (processing || promptHandshake.isActive()) {
+            return false;
+        }
+        QueuedMessages.Line next = QueuedMessages.next();
+        if (next == null) {
+            return false;
+        }
+        start(next.typed(), next.shown(), next.expanded());
+        return true;
+    }
+
+    /**
+     * Runs one line on a command thread of its own.
+     *
+     * @param typed    the line as typed, paste markers and all
+     * @param recorded the line as typed with secrets masked, as it is shown and kept
+     * @param command  the line with each paste marker put back, which is what runs
+     */
+    private void start(String typed, String recorded, String command) {
         // Each command opens a fresh result segment; browsing returns to live so the user
         // sees the command they just launched.
         exitFocus();
@@ -854,10 +914,14 @@ public class InteractiveShell implements InputHandler {
                 executeCommand(typed, command);
             } finally {
                 com.eonmux.cadetcoder.ai.PromptAttachments.clear();
+                QueuedMessages.ownedBy(null);
                 stopProcessing();
             }
         });
         commandThread.setDaemon(true);
+        // Named before it starts, so the command's conversation can take what is queued from its
+        // first turn.
+        QueuedMessages.ownedBy(commandThread);
         commandThread.start();
     }
 
@@ -1287,11 +1351,13 @@ public class InteractiveShell implements InputHandler {
     }
 
     private void stopProcessing() {
-        processing      = false;
         currentCommand  = null;
         initialActivity = "";
         header.refreshBranch(); // a command may have changed branches
         dirty          = true;
+        // Last: the tick starts the next queued line as soon as this reads false, and that start
+        // sets the fields above for the new command.
+        processing      = false;
     }
 
     /**
@@ -1302,10 +1368,24 @@ public class InteractiveShell implements InputHandler {
             interruptRequested = true;
             com.eonmux.cadetcoder.InterruptSignal.request();
             appendSystemNotice("Command interruption requested");
+            // What is typed stays, so a stop costs nothing that was being written. A key typed at
+            // a hidden prompt is the exception: it is drawn masked only while the prompt is up.
+            boolean secret = promptHandshake.isActive() && promptHandshake.isSecret();
             // If the command is blocked waiting on a prompt, release it so the
             // interrupt actually unwedges the command thread.
             cancelPendingPrompt();
-            inputState.clear();
+            if (secret) {
+                inputState.clear();
+            }
+            // The lines sent after the command are not run after a stop. Each one is in the
+            // history as it was queued, so Up brings it back unchanged, one line at a time.
+            int unsent = QueuedMessages.takeAll().size();
+            if (unsent > 0) {
+                appendSystemNotice(unsent == 1
+                                   ? "1 queued line was not sent. Press Up to recall it."
+                                   : unsent + " queued lines were not sent. Press Up to recall"
+                                     + " them.");
+            }
             dirty = true;
         }
     }
@@ -1431,8 +1511,8 @@ public class InteractiveShell implements InputHandler {
     }
 
     /**
-     * What the shell is doing right now: the command, how long it has been running, and what the
-     * request has cost so far.
+     * What the shell is doing right now: the command, how long it has been running, what the
+     * request has cost so far, and how many lines wait their turn.
      *
      * <p>Assembled in one place and shown in one place. The spinner animated in both the console
      * heading and the status bar at once, and the command being run was named in the status bar as
@@ -1459,6 +1539,13 @@ public class InteractiveShell implements InputHandler {
                 .inFlightStatus()
                 .map(com.eonmux.cadetcoder.ai.metrics.RequestMetricsRecorder.InFlightStatus::render)
                 .orElse("");
+        // The lines sent while the command runs, so a line that was queued is seen to be waiting.
+        int waiting = QueuedMessages.size();
+        if (waiting > 0) {
+            String queued = waiting + " queued";
+            timing = timing.isEmpty() ? queued
+                                      : timing + "  " + glyphs.bullet() + "  " + queued;
+        }
 
         return ShellActivityLine.compose(mark, activity, timing, width, glyphs.bullet(),
                                          glyphs.ellipsis());

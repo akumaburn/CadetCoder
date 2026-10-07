@@ -825,8 +825,8 @@ public class Configuration {
      *
      * <p>The only thing this tool does in parallel is run workers, each a full agentic loop, so this
      * is about workers and says so. The binding constraint is the provider rather than the machine:
-     * concurrent workers share one account, one rate limit and one retry budget, which is why the
-     * default is small and the ceiling is {@code 8}.</p>
+     * concurrent workers share one account and one rate limit, which is why the default is small
+     * and the ceiling is {@code 8}.</p>
      */
     public static class PerformanceConfig {
 

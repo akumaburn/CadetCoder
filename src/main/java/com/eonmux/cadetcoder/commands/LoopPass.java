@@ -73,19 +73,6 @@ public final class LoopPass {
     }
 
     /**
-     * Whether the calling thread is running a pass of a loop.
-     *
-     * <p>A loop is started so that it runs without anyone, so a request made in one does not stop
-     * to ask the terminal whether to try again; it waits out an outage by itself
-     * ({@code OutageWait}). Work a pass hands to a thread of its own is not the pass, as above.</p>
-     *
-     * @return whether a pass is in scope on this thread
-     */
-    public static boolean isInAPass() {
-        return CURRENT.get() != null;
-    }
-
-    /**
      * Opens one iteration, and says what to call it.
      *
      * <p>Recording and naming are one call because they are one event. Kept apart, a second

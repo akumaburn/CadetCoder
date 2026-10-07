@@ -20,6 +20,7 @@ final class AgentState {
     private final LongSupplier       clock;
     private final long               startTimeMillis;
     private final List<ActionResult> executedActions = new ArrayList<>();
+    private final List<Message>      messages        = new ArrayList<>();
 
     /**
      * Loop protection for this agent run. The agent loop previously had none at all: only
@@ -62,6 +63,20 @@ final class AgentState {
         executedActions.add(new ActionResult(action, exitCode, output));
     }
 
+    /**
+     * Records a message the person sent while the run went on, after the actions that ran so far.
+     *
+     * @param text what they sent
+     */
+    void addMessage(String text) {
+        messages.add(new Message(executedActions.size(), text));
+    }
+
+    /** @return the messages the person sent, oldest first */
+    List<Message> getMessages() {
+        return messages;
+    }
+
     /** @return this run's loop guard, never {@code null} */
     ActionLoopGuard getLoopGuard() {
         return loopGuard;
@@ -81,6 +96,15 @@ final class AgentState {
 
     List<ActionResult> getExecutedActions() {
         return executedActions;
+    }
+
+    /**
+     * One message the person sent, and where it falls among the actions.
+     *
+     * @param afterActions how many actions had run when it arrived
+     * @param text         what they sent
+     */
+    record Message(int afterActions, String text) {
     }
 
     /** One step that ran, with what it returned and what it printed. */

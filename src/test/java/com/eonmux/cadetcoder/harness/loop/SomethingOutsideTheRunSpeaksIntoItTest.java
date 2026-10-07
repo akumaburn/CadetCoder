@@ -67,7 +67,7 @@ public class SomethingOutsideTheRunSpeaksIntoItTest {
     }
 
     /** Says one thing once, then has nothing further to say. */
-    private static final class Saying implements RunSignals {
+    private static class Saying implements RunSignals {
 
         private final String once;
         private final int    questions;
@@ -75,6 +75,7 @@ public class SomethingOutsideTheRunSpeaksIntoItTest {
 
         private int said;
         private int asked;
+        private int replies;
 
         private Saying(String once, int questions) {
             this(once, questions, "");
@@ -97,8 +98,22 @@ public class SomethingOutsideTheRunSpeaksIntoItTest {
         }
 
         @Override
+        public List<String> fromThePerson() {
+            return List.of();
+        }
+
+        @Override
+        public void agentReplied() {
+            replies++;
+        }
+
+        @Override
         public String questionDone(String declaration) {
             return asked++ < questions ? "are you sure about: " + declaration : "";
+        }
+
+        int replies() {
+            return replies;
         }
 
         int asked() {
@@ -114,6 +129,40 @@ public class SomethingOutsideTheRunSpeaksIntoItTest {
 
         assertThat(result.status()).isEqualTo(RunStatus.DONE);
         assertThat(toldTheAgent(agent.last())).contains("[timer] t1 fired");
+    }
+
+    /** A message from the person is their own turn, after what the driver says, in order. */
+    @Test
+    public void whatThePersonSendsReachesTheAgentAsTheirOwnTurns() {
+        ScriptedReasoner agent = ScriptedReasoner.saying(STEP, "DONE: it adds one");
+        List<List<String>> sent = new ArrayList<>(List.of(List.of("also log it", "and test it")));
+        RunSignals person = new Saying("[timer] t1 fired", 0) {
+            @Override
+            public List<String> fromThePerson() {
+                return sent.isEmpty() ? List.of() : sent.remove(0);
+            }
+        };
+
+        harness(person, agent).run();
+
+        List<String> personal = new ArrayList<>();
+        int timerAt = -1;
+        int firstAt = -1;
+        List<Turn> turns = agent.last().turns();
+        for (int i = 0; i < turns.size(); i++) {
+            Turn turn = turns.get(i);
+            if (turn.kind() == TurnKind.PERSON) {
+                personal.add(turn.text());
+                firstAt = firstAt < 0 ? i : firstAt;
+            } else if (turn.text().contains("[timer] t1 fired")) {
+                timerAt = i;
+            }
+        }
+        assertThat(personal).containsExactly("also log it", "and test it");
+        assertThat(((Saying) person).replies())
+                .as("each reply of the agent confirms what it was sent").isEqualTo(2);
+        assertThat(firstAt).as("after the driver spoke").isGreaterThan(timerAt);
+        assertThat(timerAt).isNotNegative();
     }
 
     /** It has to read as the driver speaking; read as the world answering it would be evidence. */

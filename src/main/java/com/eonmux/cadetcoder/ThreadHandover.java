@@ -1,6 +1,7 @@
 package com.eonmux.cadetcoder;
 
 import com.eonmux.cadetcoder.commands.ModelDispatch;
+import com.eonmux.cadetcoder.commands.QueuedMessages;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.timers.TimerScope;
 import com.eonmux.cadetcoder.ui.InteractivePrompts;
@@ -11,12 +12,13 @@ import com.eonmux.cadetcoder.ui.OutputCapture;
  *
  * <h2>Why anything has to go with it</h2>
  *
- * <p>Five things about a running command are held per thread, because each of them is about one
+ * <p>Six things about a running command are held per thread, because each of them is about one
  * line of work rather than about the program: which sink is collecting what it prints, whose timers
- * it is setting, whether a model asked for it, whether it may stop and ask the user a question, and
- * which run it is part of, which decides the run an interrupt saves a resume point for.
+ * it is setting, whether a model asked for it, whether it may stop and ask the user a question,
+ * which run it is part of, which decides the run an interrupt saves a resume point for, and
+ * whether it is the shell's command, whose conversation takes the lines the person queues.
  * Every interruptible command is then dispatched on a freshly made thread, so that an interrupt has
- * a thread to land on -- and a fresh thread knows none of those five. Each of them failed
+ * a thread to land on -- and a fresh thread knows none of those six. Each of them failed
  * differently and silently: a captured run came back empty, a worker's reminder was filed under the
  * person at the terminal, a guard that asks whether the model is driving was answered "no" for a
  * command the model had just asked for, and {@code commit} put its confirmation to a user who was
@@ -46,7 +48,8 @@ public final class ThreadHandover {
         if (body == null) {
             return null;
         }
-        return ResumeScope.carrying(TimerScope.carrying(ModelDispatch.carrying(
-                InteractivePrompts.carrying(OutputCapture.carrying(body)))));
+        return QueuedMessages.carrying(ResumeScope.carrying(TimerScope.carrying(
+                ModelDispatch.carrying(InteractivePrompts.carrying(
+                        OutputCapture.carrying(body))))));
     }
 }

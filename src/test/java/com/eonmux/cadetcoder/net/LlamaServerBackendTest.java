@@ -54,6 +54,7 @@ public class LlamaServerBackendTest {
     public void tearDown() {
         System.clearProperty(RetryPolicy.BASE_DELAY_MS_PROPERTY);
         System.clearProperty(RetryPolicy.MAX_DELAY_MS_PROPERTY);
+        System.clearProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY);
     }
 
     @Test
@@ -200,6 +201,8 @@ public class LlamaServerBackendTest {
         // Inverted: a local llama-server that is not running used to surface as a bare IOException.
         // It is now a typed transport failure naming the endpoint the user has to bring up, with the
         // original IOException preserved as the cause.
+        // A limit is set so the failure surfaces; by default the retries do not end.
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "2");
         assertThatThrownBy(() -> llamaServerBackend.complete(mockPromptData, parameters))
                 .isInstanceOf(LLMTransportException.class)
                 .hasMessageContaining("Cannot reach " + API_ENDPOINT + "/v1/chat/completions")
@@ -224,11 +227,13 @@ public class LlamaServerBackendTest {
         // Inverted: a 503 used to be RETURNED as completion text, so a failed call was parsed as if
         // the model had answered and the command still exited 0. A 5xx is transient, so it is now
         // retried and then raised as a typed failure.
+        // A limit is set so the failure surfaces; by default the retries do not end.
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "3");
         assertThatThrownBy(() -> llamaServerBackend.complete(mockPromptData, parameters))
                 .isInstanceOf(LLMServerException.class)
                 .hasMessageContaining("Provider 'llama-server' returned a server error (HTTP 503)")
                 .hasMessageContaining("try again later");
-        verify(mockHttpClient, times(RetryPolicy.DEFAULT_MAX_ATTEMPTS)).sendAsync(any(HttpRequest.class), any());
+        verify(mockHttpClient, times(3)).sendAsync(any(HttpRequest.class), any());
     }
 
     @Test

@@ -83,13 +83,36 @@ public class RetryPolicyTest {
     }
 
     @Test
-    public void shouldRetry_declinesWhenRetryAfterExceedsTheCap() {
-        RetryPolicy policy = new RetryPolicy(3, 100L, 5_000L, new Random(7));
-        LLMException longWait = new LLMRateLimitException(
-                "openai", "m", "http://x", 429, null, Duration.ofSeconds(120));
+    public void shouldRetry_waitsOutARetryAfterLongerThanTheCap() {
+        // A provider that asks for a long wait is waited for, up to the cap, and then asked again:
+        // there is no point at which a retryable failure is given up on.
+        RetryPolicy  policy   = new RetryPolicy(RetryPolicy.UNLIMITED, 100L, 5_000L, new Random(7));
+        LLMException longWait = new LLMRateLimitException("openai", "m", "http://x", 429, null,
+                                                          Duration.ofMinutes(10));
 
-        // Waiting two minutes inside a CLI invocation is worse than failing with "retry later".
-        assertThat(policy.shouldRetry(longWait, 1)).isFalse();
+        assertThat(policy.shouldRetry(longWait, 1)).isTrue();
+        assertThat(policy.delayMillis(1, longWait.getRetryAfter())).isEqualTo(5_000L);
+    }
+
+    @Test
+    public void shouldRetry_neverRunsOutOfAttemptsByDefault() {
+        RetryPolicy  policy  = RetryPolicy.fromSystemProperties();
+        LLMException failure = new LLMServerException("openai", "m", "http://x", 503, null);
+
+        assertThat(policy.isUnlimited()).isTrue();
+        assertThat(policy.shouldRetry(failure, 1)).isTrue();
+        assertThat(policy.shouldRetry(failure, 1_000_000)).isTrue();
+        assertThat(policy.shouldRetry(failure, Integer.MAX_VALUE)).isTrue();
+    }
+
+    @Test
+    public void delayMillis_reachesThirtyMinutesAndStaysThere() {
+        RetryPolicy policy = RetryPolicy.fromSystemProperties();
+        long        thirty = Duration.ofMinutes(30).toMillis();
+
+        for (int attempt : new int[] {30, 1_000, Integer.MAX_VALUE}) {
+            assertThat(policy.delayMillis(attempt, null)).isBetween(thirty / 2, thirty);
+        }
     }
 
     @Test
@@ -155,9 +178,10 @@ public class RetryPolicyTest {
 
         // Pinned to the literals as well: the assertions above compare each constant with itself and
         // would hold at any value, so on their own they do not defend the shipped defaults.
-        assertThat(policy.getMaxAttempts()).as("attempts before a run gives up").isEqualTo(10);
+        assertThat(policy.getMaxAttempts()).as("no limit on attempts").isZero();
         assertThat(policy.getBaseDelayMillis()).isEqualTo(500L);
-        assertThat(policy.getMaxDelayMillis()).isEqualTo(20_000L);
+        assertThat(policy.getMaxDelayMillis()).as("thirty minutes")
+                .isEqualTo(Duration.ofMinutes(30).toMillis());
     }
 
     @Test
@@ -186,7 +210,7 @@ public class RetryPolicyTest {
 
     @Test
     public void constructor_rejectsNonsenseAttemptCounts() {
-        assertThatThrownBy(() -> new RetryPolicy(0, 10L, 20L))
+        assertThatThrownBy(() -> new RetryPolicy(-1, 10L, 20L))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("maxAttempts");
     }

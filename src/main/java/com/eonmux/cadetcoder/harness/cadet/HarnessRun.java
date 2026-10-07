@@ -1,6 +1,7 @@
 package com.eonmux.cadetcoder.harness.cadet;
 
 import com.eonmux.cadetcoder.CommandRegistry;
+import com.eonmux.cadetcoder.commands.QueuedMessages;
 import com.eonmux.cadetcoder.harness.budget.Budget;
 import com.eonmux.cadetcoder.harness.commit.CommitPolicy;
 import com.eonmux.cadetcoder.harness.env.Environment;
@@ -42,6 +43,9 @@ public final class HarnessRun {
     private final RunWatch        watch;
     private final RunStop         stop;
 
+    /** Where the messages the person sends while a run goes on come from. */
+    private final QueuedMessages.Conversation conversation;
+
     /**
      * @param commands  what the agent acts through
      * @param reasoners who does the thinking, weakest first
@@ -50,6 +54,14 @@ public final class HarnessRun {
      */
     public HarnessRun(CommandRegistry commands, List<Reasoner> reasoners, RunWatch watch,
                      RunStop stop) {
+        this(commands, reasoners, watch, stop, QueuedMessages.Conversation.NONE);
+    }
+
+    private HarnessRun(CommandRegistry commands, List<Reasoner> reasoners, RunWatch watch,
+                       RunStop stop, QueuedMessages.Conversation conversation) {
+        if (conversation == null) {
+            throw new IllegalArgumentException("a run needs somewhere to hear the person from");
+        }
         if (commands == null || watch == null || stop == null) {
             throw new IllegalArgumentException("a run needs commands to act through, a watch and a "
                                                + "way to be called off");
@@ -61,6 +73,17 @@ public final class HarnessRun {
         this.reasoners = List.copyOf(reasoners);
         this.watch     = watch;
         this.stop      = stop;
+        this.conversation = conversation;
+    }
+
+    /**
+     * The same run, told what the person sends while it goes on.
+     *
+     * @param conversation where the messages come from
+     * @return a run that puts each one in front of the agent before its next round
+     */
+    public HarnessRun hearing(QueuedMessages.Conversation conversation) {
+        return new HarnessRun(commands, reasoners, watch, stop, conversation);
     }
 
     /**
@@ -101,7 +124,7 @@ public final class HarnessRun {
         RunResult result;
         try {
             result = new Harness(session, reasoners, HarnessLimits.standard(), watch, stop,
-                                 new CadetSignals(request.task()))
+                                 new CadetSignals(request.task(), conversation))
                     .run();
         } catch (RuntimeException failure) {
             throw new RunCutShort(record, failure);

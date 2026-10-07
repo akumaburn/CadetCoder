@@ -118,25 +118,46 @@ final class AgentPrompts {
         return prompt.toString();
     }
 
-    /** Everything that has run so far, with its exit code and its output. */
+    /**
+     * Everything that has run so far, with its exit code and its output, and each message the
+     * person sent, in the order they happened.
+     */
     private static void appendHistory(StringBuilder prompt, AgentState state) {
-        if (state.getExecutedActions().isEmpty()) {
+        List<AgentState.ActionResult> actions  = state.getExecutedActions();
+        List<AgentState.Message>      messages = state.getMessages();
+        if (actions.isEmpty() && messages.isEmpty()) {
             return;
         }
-        prompt.append("Previous actions and their results:\n");
-        for (AgentState.ActionResult entry : state.getExecutedActions()) {
-            prompt.append("- ").append(entry.action.command).append(" ")
-                  .append(String.join(" ", entry.action.args))
-                  .append(" (exit code: ").append(entry.exitCode).append(")\n");
-            String out = entry.output;
-            if (out != null && !out.isBlank()) {
-                prompt.append("  Output:\n");
-                for (String line : truncateForPrompt(out).split("\n")) {
-                    prompt.append("    ").append(line).append("\n");
-                }
+        // Named for what it holds. A run with no messages keeps the shorter heading, so its prompt
+        // does not change when a message could have arrived but did not.
+        prompt.append(messages.isEmpty() ? "Previous actions and their results:\n"
+                                         : "Previous actions, their results and the user's"
+                                           + " messages:\n");
+        int next = 0;
+        for (int i = 0; i <= actions.size(); i++) {
+            while (next < messages.size() && messages.get(next).afterActions() == i) {
+                prompt.append("- The user said: ").append(messages.get(next).text()).append("\n");
+                next++;
+            }
+            if (i < actions.size()) {
+                appendAction(prompt, actions.get(i));
             }
         }
         prompt.append("\n");
+    }
+
+    /** One action that ran, with its exit code and its output. */
+    private static void appendAction(StringBuilder prompt, AgentState.ActionResult entry) {
+        prompt.append("- ").append(entry.action.command).append(" ")
+              .append(String.join(" ", entry.action.args))
+              .append(" (exit code: ").append(entry.exitCode).append(")\n");
+        String out = entry.output;
+        if (out != null && !out.isBlank()) {
+            prompt.append("  Output:\n");
+            for (String line : truncateForPrompt(out).split("\n")) {
+                prompt.append("    ").append(line).append("\n");
+            }
+        }
     }
 
     /** What the project's own index has to say about the task. */

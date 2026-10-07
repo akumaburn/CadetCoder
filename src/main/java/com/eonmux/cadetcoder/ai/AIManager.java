@@ -10,7 +10,6 @@ import com.eonmux.cadetcoder.error.ErrorHandler;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.eonmux.cadetcoder.ui.CollapsedOutput;
 import com.eonmux.cadetcoder.net.LLMEmptyResponseException;
-import com.eonmux.cadetcoder.commands.LoopPass;
 import com.eonmux.cadetcoder.net.LLMException;
 import com.eonmux.cadetcoder.session.SessionManager;
 
@@ -115,10 +114,10 @@ public class AIManager {
     /**
      * Completes a prompt and hands back what saying it cost along with what was said.
      *
-     * <p>The same call as {@link #complete(PromptData, Map)} -- the retries, the manual offer and
-     * the typed failures are all identical -- differing only in that the request's figures survive
-     * it. They were built and printed here already; returning them costs nothing and spares every
-     * caller that has to know what a run has spent from re-counting the characters it sent.</p>
+     * <p>The same call as {@link #complete(PromptData, Map)} -- the retries and the typed failures
+     * are identical -- differing only in that the request's figures survive it. They were built and
+     * printed here already; returning them costs nothing and spares every caller that has to know
+     * what a run has spent from re-counting the characters it sent.</p>
      *
      * @param promptData the prompt to complete
      * @param parameters additional parameters for the model
@@ -133,7 +132,7 @@ public class AIManager {
     /**
      * Completes a prompt through a model of the caller's choosing rather than the active one.
      *
-     * <p>The only thing this changes is who answers. The retries, the manual offer, the composed
+     * <p>The only thing this changes is who answers. The retries, the composed
      * system prompt, the measurement and the typed failures are the ones every other request gets:
      * a second model reached through a path of its own would be a second policy, and the first time
      * the two disagreed the run would be unaccountable for what it had actually spent.</p>
@@ -152,30 +151,9 @@ public class AIManager {
      */
     public Completion completeMeasured(AIClient client, PromptData promptData,
                                        Map<String, Object> parameters) {
-        OutageWait outage       = OutageWait.fromSystemProperties();
-        Long       firstFailure = null;
-        while (true) {
-            try {
-                return attemptCompletion(client, promptData, parameters);
-            } catch (LLMException failure) {
-                // The backend has already exhausted its automatic retries. Rather than ending the
-                // run there, offer the person at the terminal one more go: a provider that was rate
-                // limiting or briefly unreachable is very often fine a few seconds later, and the
-                // alternative is losing the whole task and retyping the request. A loop is not
-                // watched, so it waits out an outage by itself and never asks.
-                if (LoopPass.isInAPass()) {
-                    // Timed from the first failure, so the attempts count against the budget as
-                    // well as the waits between them.
-                    firstFailure = firstFailure != null ? firstFailure : System.nanoTime();
-                    long outageSoFar = (System.nanoTime() - firstFailure) / 1_000_000L;
-                    if (outage.waitOut(failure, outageSoFar) == OutageWait.GIVE_UP) {
-                        throw failure;
-                    }
-                } else if (!ManualRetry.offer(failure)) {
-                    throw failure;
-                }
-            }
-        }
+        // The backend retries a failure that could clear for as long as it lasts, so what reaches
+        // here is a failure no retry can change, or a stop the user asked for.
+        return attemptCompletion(client, promptData, parameters);
     }
 
     /**
@@ -501,8 +479,8 @@ public class AIManager {
      * {@code "AI completion interrupted."} let a caller parse a control-flow event as model output
      * -- the same defect the {@code "Error: ..."} sentinels had, with the added twist that the run
      * carried on afterwards as though it had been answered. It leaves on the typed failure channel
-     * with everything else that produced no reply, and its kind is one no retry can help, so the
-     * manual offer is never made for it.</p>
+     * with everything else that produced no reply, and its kind is one that is never
+     * retried.</p>
      *
      * <h2>Why the flag is set again first</h2>
      *

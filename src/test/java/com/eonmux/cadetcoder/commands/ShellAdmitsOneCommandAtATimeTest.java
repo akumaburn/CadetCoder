@@ -22,6 +22,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * {@code notebookedit} are plain {@code Command}s) made the window unbounded: F2 could not stop
  * them at all, so the door stayed open for as long as they ran.</p>
  *
+ * <p>A line typed while a command runs is queued instead: it runs after the command, or joins the
+ * conversation the command is having, and never beside it.</p>
+ *
  * <p>Exercised through the pure static decision, as the Ctrl+C classifier next to it is: the shell
  * constructor captures {@code System.out} for the whole JVM.</p>
  */
@@ -29,7 +32,7 @@ public class ShellAdmitsOneCommandAtATimeTest {
 
     @Test
     public void anIdleShellRunsWhatIsTyped() {
-        assertThat(InteractiveShell.classifyNewCommand(false, false)).isEqualTo(Admission.RUN);
+        assertThat(InteractiveShell.classifyNewCommand(false, false, 0)).isEqualTo(Admission.RUN);
     }
 
     /**
@@ -38,19 +41,25 @@ public class ShellAdmitsOneCommandAtATimeTest {
      */
     @Test
     public void anIdleShellRunsWhatIsTypedAfterTheLastCommandWasInterrupted() {
-        assertThat(InteractiveShell.classifyNewCommand(false, true)).isEqualTo(Admission.RUN);
+        assertThat(InteractiveShell.classifyNewCommand(false, true, 0)).isEqualTo(Admission.RUN);
     }
 
+    /** A line typed while a command runs waits its turn; it never starts beside the command. */
     @Test
-    public void aRunningCommandIsNotDisplaced() {
-        assertThat(InteractiveShell.classifyNewCommand(true, false))
-                .isEqualTo(Admission.REFUSE_STILL_RUNNING);
+    public void aLineTypedWhileACommandRunsIsQueued() {
+        assertThat(InteractiveShell.classifyNewCommand(true, false, 0)).isEqualTo(Admission.QUEUE);
     }
 
     /** The case that was admitted: asked to stop, not yet stopped. */
     @Test
     public void aCommandThatHasBeenAskedToStopStillHoldsTheShell() {
-        assertThat(InteractiveShell.classifyNewCommand(true, true))
+        assertThat(InteractiveShell.classifyNewCommand(true, true, 0))
                 .isEqualTo(Admission.REFUSE_STILL_STOPPING);
+    }
+
+    /** A line typed as a command ends goes behind the lines sent while it ran. */
+    @Test
+    public void anIdleShellWithLinesStillQueuedQueuesTheNextOne() {
+        assertThat(InteractiveShell.classifyNewCommand(false, false, 2)).isEqualTo(Admission.QUEUE);
     }
 }

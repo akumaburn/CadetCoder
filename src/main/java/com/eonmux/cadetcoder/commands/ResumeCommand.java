@@ -28,8 +28,10 @@ import java.util.function.Supplier;
  * it was on and runs the passes left. A workers run runs again only the tasks that did not
  * finish.</p>
  *
- * <p>A run that the provider stops answering part-way saves a point as well, once it has done
- * some work, so the provider's outage costs no more than the interrupt would.</p>
+ * <p>A run that a request failure ends part-way saves a point as well, once it has done some
+ * work, so the failure costs no more than the interrupt would. A failure that can clear is
+ * retried until it does, so this is a refused key, a bad request, an account limit, or a retry
+ * limit set with {@code cadet.llm.maxAttempts}.</p>
  *
  * <h2>When the point is forgotten</h2>
  *

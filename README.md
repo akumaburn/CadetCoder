@@ -599,35 +599,27 @@ run makes that routine, because its gaps are exactly this long. CadetCoder sets
 50 seconds instead, below the tightest of them. A lost reuse costs one TLS
 handshake. A dead connection costs a request.
 
-The retried set is exactly the set that rewards persistence, so the budget is
-generous. CadetCoder makes 10 attempts by default, with exponential backoff
-from 500 ms, capped at 20 s per wait and jittered so that concurrent runs do
-not resynchronise. The worst case is roughly a minute and a half of waiting
-before a run gives up, and about half that in practice.
-
-The shell offers one more attempt once the automatic attempts are spent. It
-does so only when a terminal exists to ask, and only for a failure that a retry
-can fix. A rejected key gets no offer.
+CadetCoder retries the retried set until the request succeeds. There is no
+attempt limit. The wait between attempts starts at 500 ms and doubles each time
+up to 30 minutes. It then stays at 30 minutes. Each wait is jittered, so
+concurrent runs do not retry at the same moment. A run that loses its provider
+for an afternoon carries on when the provider comes back.
 
 ```text
-✗ AI request failed: 503 Service Unavailable
-Enter to retry, or 'stop' to end the run >>>
+⚠ Provider 'zai' returned HTTP 503; retrying (attempt 7) in 12s; F2 or Ctrl-C stops it
 ```
 
-Enter, `retry`, or `y` tries again. Anything else ends the run. The alternative
-discards a run that already made twenty successful requests, because the
-twenty-first hit a provider that was briefly down. A script, a pipe and CI have
-nobody to ask, so the failure propagates as before and the exit code does not
-change. End-of-input counts as "stop" for the same reason, because a loop on an
-EOF that will never change would hang. Suppress the prompt on a terminal with
-`-Dcadet.manualRetry=false`.
+F2 or Ctrl-C ends a wait at once and stops the run. `/resume` carries the run
+on later. A rejected key, a bad request and an account with no allowance left
+are never retried, because a retry gets the same answer. Set
+`cadet.llm.maxAttempts` to stop after a fixed number of attempts instead, for
+example in a script or in CI.
 
 | Property | Default | Effect |
 |---|---|---|
-| `cadet.llm.maxAttempts` | `10` | total attempts including the first; clamped to 20 |
+| `cadet.llm.maxAttempts` | `0` | total attempts including the first; `0` means no limit |
 | `cadet.llm.retry.baseDelayMs` | `500` | first backoff, doubled from there |
-| `cadet.llm.retry.maxDelayMs` | `20000` | ceiling on a single wait |
-| `cadet.manualRetry` | `true` | offer Enter-to-retry once the budget is spent |
+| `cadet.llm.retry.maxDelayMs` | `1800000` | ceiling on a single wait, at most 30 minutes |
 | `cadet.llm.connectTimeoutSeconds` | `10` | establish the TCP and TLS connection |
 | `ai.completionTimeoutSeconds` (config) | `300` | wait for response headers, which is the whole generation because nothing streams |
 | `cadet.llm.responseDeadlineSeconds` | `600` | whole exchange including the body; a stall backstop |
@@ -638,8 +630,8 @@ CadetCoder honours the provider's `Retry-After-Ms` header ahead of
 and HTTP-date. The millisecond form matters at the short end. A provider that
 asks for 200 ms must express it as `Retry-After: 1`, which rounds up to five
 times the wait it wanted. A `Retry-After` longer than
-`cadet.llm.retry.maxDelayMs` ends the retries, because the provider asked for a
-pause longer than the CLI waits.
+`cadet.llm.retry.maxDelayMs` is cut to that ceiling. CadetCoder then asks
+again, and the provider can ask for another wait.
 
 ## The agent harness
 
@@ -781,8 +773,9 @@ Three workers run at once by default, up to eight per run. Set
 `performance.threads` to change it, or set `performance.parallelProcessing` to
 `false` to run them one at a time. `-Dcadet.workers.concurrency` overrides both
 for a single run. The provider sets the limit rather than the machine. Every
-worker is a full agentic loop against one account and one shared retry budget,
-so past a handful they stop queueing and start to fail each other. CadetCoder
+worker is a full agentic loop against one account and one rate limit, so past
+a handful they spend more time waiting out each other's rate limits than
+working. CadetCoder
 reads the number in one place, reports it before a run starts, and tells the
 model the same figure. A worker cannot start more workers.
 
@@ -1549,9 +1542,9 @@ prompt that the code you asked about does not get.
 
 - `performance.threads` sets how many workers `workers` runs at once, between 1
   and 8. The provider's rate limit sets the ceiling rather than the machine.
-  Every worker is a full agent loop against one account, one rate limit and one
-  shared retry budget, so past a point they do not queue and instead fail each
-  other.
+  Every worker is a full agent loop against one account and one rate limit, so
+  past a point they spend more time waiting out each other's rate limits than
+  working.
 - `performance.parallelProcessing` runs workers one at a time when set to
   `false`.
 
@@ -1752,7 +1745,7 @@ paste. Non-UTF-8 terminals get ASCII glyph substitutes.
 | `Ctrl+Left` / `Ctrl+Right` | Move the cursor a word at a time. Some terminals send `Alt` instead of `Ctrl`; both work, as do `Alt+B` and `Alt+F`. |
 | `Ctrl+W` | Delete the word behind the cursor |
 | `F1` | Help overlay, holding the same reference `/help` prints. Arrows, `PgUp` and `PgDn` scroll it; any other key closes it. |
-| `F2` / `Ctrl+C` | Interrupt the running command. `/resume` carries on an interrupted chat, agent, loop or workers run. |
+| `F2` / `Ctrl+C` | Interrupt the running command. The line being typed stays. Queued lines are not sent; `Up` recalls them. `/resume` carries on an interrupted chat, agent, loop or workers run. |
 | `F3` | Print recent history |
 | `F4` | Select mode: the mouse selects, and a click does not open the result under it |
 | `Ctrl+U` | Clear the line being typed |
@@ -1763,6 +1756,16 @@ paste. Non-UTF-8 terminals get ASCII glyph substitutes.
 | `Esc` | Back out of whatever is innermost: a prompt, select mode, a selection, a focused result, then the line being typed |
 | `Ctrl+Q` or `/quit` | Exit |
 | `Ctrl+C` when idle | Asks. A second press exits. Anything else takes the question back. |
+
+Press `Enter` while a command runs to queue the line. The status line shows how
+many lines wait. A message for the model joins the chat, agent or loop run that
+you started as soon as its current step ends, and the console says
+`Added to the conversation: <message>`. A run that the model starts, such as an
+agent run that a chat starts, does not take messages. A `/command`, a line with
+a picture, and a message that no conversation takes run in the order sent once
+the command ends. If the run ends before the model reads a message that it
+took, the console says so, and `Up` recalls the message. F2 stops the command
+and drops the queued lines. Each one stays in the history, so `Up` recalls it.
 
 A paste of more than one line, or of more than 200 characters, does not go into
 the line as text. It goes in as a short marker naming what it stands for, such

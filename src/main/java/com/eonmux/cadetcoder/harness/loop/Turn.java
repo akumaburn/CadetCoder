@@ -25,6 +25,11 @@ public record Turn(TurnKind kind, String text) {
         return new Turn(TurnKind.HARNESS, text);
     }
 
+    /** Something the person who started the run sent while it went on. */
+    public static Turn person(String text) {
+        return new Turn(TurnKind.PERSON, text);
+    }
+
     /** Something a tool answered. */
     public static Turn answer(String text) {
         return new Turn(TurnKind.ANSWER, text);

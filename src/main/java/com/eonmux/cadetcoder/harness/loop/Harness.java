@@ -208,6 +208,7 @@ public final class Harness {
             session.budget().checkTime();
             Reasoner reasoner = reasoner();
             Reply    reply    = reasoner.think(system, transcript);
+            signals.agentReplied();
             session.budget().chargeTokens(reply.tokensIn(), reply.tokensOut());
             transcript = transcript.plus(Turn.agent(reply.text()));
 
@@ -356,6 +357,9 @@ public final class Harness {
         String said = signals.beforeRound();
         if (!said.isBlank()) {
             transcript = transcript.plus(Turn.harness(SPEAKING + said));
+        }
+        for (String message : signals.fromThePerson()) {
+            transcript = transcript.plus(Turn.person(message));
         }
 
         Budget budget = session.budget();

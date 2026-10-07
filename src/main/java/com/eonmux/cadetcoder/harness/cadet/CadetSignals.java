@@ -1,10 +1,13 @@
 package com.eonmux.cadetcoder.harness.cadet;
 
 import com.eonmux.cadetcoder.ai.UberMode;
+import com.eonmux.cadetcoder.commands.QueuedMessages;
 import com.eonmux.cadetcoder.harness.loop.RunSignals;
 import com.eonmux.cadetcoder.harness.loop.SystemPrompt;
 import com.eonmux.cadetcoder.jobs.JobNotice;
 import com.eonmux.cadetcoder.timers.TimerNotice;
+
+import java.util.List;
 
 /**
  * What this tool has to say to a run while it is going: check-ins that have come due, and a question
@@ -33,13 +36,25 @@ public final class CadetSignals implements RunSignals {
     /** What this run was asked for, which is the thing a claim of completion is checked against. */
     private final String task;
 
+    /** Where the messages the person sends while the run goes on come from. */
+    private final QueuedMessages.Conversation conversation;
+
     private int questionsAsked;
 
     /**
      * @param task what the run was asked to do
      */
     public CadetSignals(String task) {
-        this.task = task;
+        this(task, QueuedMessages.Conversation.NONE);
+    }
+
+    /**
+     * @param task         what this run was asked for
+     * @param conversation where the messages the person sends while the run goes on come from
+     */
+    public CadetSignals(String task, QueuedMessages.Conversation conversation) {
+        this.task         = task;
+        this.conversation = conversation;
     }
 
     @Override
@@ -56,6 +71,16 @@ public final class CadetSignals implements RunSignals {
         TimerNotice.delivered();
         JobNotice.delivered();
         return notice;
+    }
+
+    @Override
+    public List<String> fromThePerson() {
+        return conversation.take();
+    }
+
+    @Override
+    public void agentReplied() {
+        conversation.delivered();
     }
 
     @Override

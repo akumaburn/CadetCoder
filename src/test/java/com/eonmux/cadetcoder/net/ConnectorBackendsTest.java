@@ -62,6 +62,7 @@ public class ConnectorBackendsTest {
     public void tearDown() {
         System.clearProperty(RetryPolicy.BASE_DELAY_MS_PROPERTY);
         System.clearProperty(RetryPolicy.MAX_DELAY_MS_PROPERTY);
+        System.clearProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY);
         if (server != null) {
             server.stop(0);
         }
@@ -141,6 +142,8 @@ public class ConnectorBackendsTest {
         // Strengthened: this used to accept EITHER an "Error:" string or any exception at all, which
         // is exactly the ambiguity that let a failed call pass for a completion. A dead endpoint must
         // now raise a typed transport failure that names the endpoint it could not reach.
+        // A limit is set so the failure surfaces; by default the retries do not end.
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "2");
         assertThatThrownBy(() -> backend.complete(new PromptData("s", "u"), new HashMap<>()))
                 .isInstanceOf(LLMTransportException.class)
                 .hasMessageContaining("Cannot reach " + base + "/chat/completions");

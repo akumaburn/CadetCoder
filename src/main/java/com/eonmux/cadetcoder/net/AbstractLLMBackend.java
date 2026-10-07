@@ -1,7 +1,10 @@
 package com.eonmux.cadetcoder.net;
 
+import com.eonmux.cadetcoder.InterruptSignal;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.logging.CadetLogger;
+import com.eonmux.cadetcoder.ui.OutputCapture;
+import com.eonmux.cadetcoder.ui.OutputRouter;
 
 import java.io.IOException;
 import java.net.URI;
@@ -151,7 +154,9 @@ public abstract class AbstractLLMBackend implements LLMBackend {
         RetryPolicy policy   = RetryPolicy.fromSystemProperties();
         String      provider = providerId();
 
-        for (int attempt = 1; ; attempt++) {
+        // Saturating rather than wrapping: an unlimited policy never ends the loop, and a counter
+        // that wrapped to a negative number would read as the first attempt again.
+        for (int attempt = 1; ; attempt = attempt == Integer.MAX_VALUE ? attempt : attempt + 1) {
             HttpRequest request = nextAttempt.get();
             if (request == null) {
                 throw new IllegalArgumentException("request must not be null");
@@ -207,7 +212,7 @@ public abstract class AbstractLLMBackend implements LLMBackend {
             }
 
             long delay = policy.delayMillis(attempt, failure.getRetryAfter());
-            announceRetry(failure, attempt, policy.getMaxAttempts(), delay);
+            announceRetry(failure, attempt, policy, delay);
             sleep(delay, provider, endpoint);
         }
     }
@@ -252,9 +257,12 @@ public abstract class AbstractLLMBackend implements LLMBackend {
     }
 
     /** Tells the user (and the log) that a transient failure is being retried, and for how long. */
-    private void announceRetry(LLMException failure, int attempt, int maxAttempts, long delayMillis) {
-        String message = describeRetry(failure) + "; retrying (attempt " + (attempt + 1) + "/"
-                + maxAttempts + ") in " + delayMillis + "ms";
+    private void announceRetry(LLMException failure, int attempt, RetryPolicy policy,
+                               long delayMillis) {
+        String of      = policy.isUnlimited() ? "" : "/" + policy.getMaxAttempts();
+        String message = describeRetry(failure) + "; retrying (attempt " + (attempt + 1) + of
+                + ") in " + spoken(delayMillis)
+                + (policy.isUnlimited() ? howToStop() : "");
         // warnToFile, not warn: CadetLogger.warn now renders its own console line, so pairing it
         // with printWarning put the same retry notice on screen twice per attempt.
         CadetLogger log = logger();
@@ -286,19 +294,65 @@ public abstract class AbstractLLMBackend implements LLMBackend {
         }
     }
 
-    private void sleep(long delayMillis, String provider, String endpoint) {
-        if (delayMillis <= 0) {
-            return;
+    /**
+     * The keys that stop the run, for the surface the user is looking at.
+     *
+     * <p>The shell turns both keys into a stop. Outside it only Ctrl-C does, by ending the process.
+     * Collected output, such as a worker's, is read after the fact, and no key stops a background
+     * worker, so it carries no hint.</p>
+     *
+     * @return the hint, with its leading separator, or an empty string
+     */
+    private static String howToStop() {
+        if (OutputCapture.isCapturing()) {
+            return "";
         }
-        try {
-            Thread.sleep(delayMillis);
-        } catch (InterruptedException e) {
-            // Interrupted while waiting to try again, which is the same event as being interrupted
-            // mid-request and is reported the same way.
-            Thread.currentThread().interrupt();
-            throw LLMException.stopped(provider, modelName, endpoint, e);
+        return OutputRouter.getInstance().isRouting() ? "; F2 or Ctrl-C stops it"
+                                                      : "; Ctrl-C stops it";
+    }
+
+    /** A wait as a person would write it: milliseconds below a second, else minutes and seconds. */
+    private static String spoken(long millis) {
+        if (millis < 1_000L) {
+            return millis + "ms";
+        }
+        long seconds = millis / 1_000L;
+        return seconds < 60 ? seconds + "s" : (seconds / 60) + "m " + (seconds % 60) + "s";
+    }
+
+    /**
+     * Waits before the next attempt, in slices, so a stop ends the wait at once.
+     *
+     * <p>A wait can be half an hour long. The shell asks a command to stop through
+     * {@link InterruptSignal} as well as by interrupting its thread, and a thread blocked in one
+     * long sleep would see only the second.</p>
+     */
+    private void sleep(long delayMillis, String provider, String endpoint) {
+        // Checked before the first slice too: a wait set to zero has no slices, and a retry that
+        // never looked would go on with nothing able to stop it.
+        if (InterruptSignal.isRequested()) {
+            throw LLMException.stopped(provider, modelName, endpoint, null);
+        }
+        long remaining = delayMillis;
+        while (remaining > 0) {
+            if (InterruptSignal.isRequested()) {
+                throw LLMException.stopped(provider, modelName, endpoint, null);
+            }
+            long slice = Math.min(WAIT_SLICE_MS, remaining);
+            try {
+                Thread.sleep(slice);
+            } catch (InterruptedException e) {
+                // Interrupted while waiting to try again, which is the same event as being
+                // interrupted mid-request and is reported the same way.
+                Thread.currentThread().interrupt();
+                throw LLMException.stopped(provider, modelName, endpoint, e);
+            }
+            remaining -= slice;
         }
     }
+
+    /** How often a wait between attempts looks for a stop. */
+    private static final long WAIT_SLICE_MS = 200L;
 
     /** Extracts a readable host label from a URL, falling back to the raw value. */
     protected static String hostOf(String url) {

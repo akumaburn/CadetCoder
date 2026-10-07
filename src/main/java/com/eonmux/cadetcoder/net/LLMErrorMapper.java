@@ -8,6 +8,8 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 import com.eonmux.cadetcoder.ai.providers.ZaiPlatform;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.eonmux.cadetcoder.security.SecretRedactor;
 
 import java.util.regex.Pattern;
@@ -68,6 +70,34 @@ public final class LLMErrorMapper {
         return lower.contains("cmd_zdr_no_providers") || lower.contains("zero-data-retention");
     }
 
+    /** The code OpenAI, and the services that copy its errors, send for a balance that ran out. */
+    private static final String INSUFFICIENT_QUOTA = "insufficient_quota";
+
+    private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Whether a 429 says the account's quota ran out rather than that it asked too fast.
+     *
+     * <p>Read from {@code error.code} and {@code error.type} only. A 429 that carries the code is
+     * refused again until somebody pays, and a retry that never ends would wait for that.</p>
+     *
+     * @param body the response body
+     * @return whether either field is {@code insufficient_quota}
+     */
+    private static boolean quotaRanOut(String body) {
+        if (body == null || body.isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode error = MAPPER.readTree(body).path("error");
+            return INSUFFICIENT_QUOTA.equals(error.path("code").asText())
+                   || INSUFFICIENT_QUOTA.equals(error.path("type").asText());
+        } catch (Exception e) {
+            // Not JSON: an HTML page from a proxy, or a truncated body. It names no quota.
+            return false;
+        }
+    }
+
     /**
      * Maps a status code (plus optional body/headers) onto the matching typed failure.
      *
@@ -92,6 +122,10 @@ public final class LLMErrorMapper {
                                                     exhausted.get(),
                                                     ZaiPlatform.adviceFor(provider, exhausted.get()),
                                                     excerpt);
+            }
+            if (quotaRanOut(body)) {
+                return new LLMAccountLimitException(provider, model, endpoint, statusCode,
+                                                    INSUFFICIENT_QUOTA, null, excerpt);
             }
             return new LLMRateLimitException(provider, model, endpoint, statusCode, excerpt,
                                              retryAfter(headers));

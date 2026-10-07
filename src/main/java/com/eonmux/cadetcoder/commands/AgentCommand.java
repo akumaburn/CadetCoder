@@ -96,7 +96,8 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
                                        .spending(allowance);
         RunOutcome outcome;
         try {
-            outcome = underTheHarness(request, Boolean.TRUE.equals(context.get("verboseMode")));
+            outcome = underTheHarness(request, Boolean.TRUE.equals(context.get("verboseMode")),
+                                      QueuedMessages.in(context));
         } catch (RunCutShort cut) {
             // The record holds what the run did before it was cut short, which a resume needs.
             context.put(RUN_RECORD, cut.record().directory().toString());
@@ -132,9 +133,12 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
      * <p>Separated so a test can see what a run was asked for without a backend behind it, by the
      * same convention as {@link #getAIManager()}. A run is built per request rather than kept:
      * a reused one would carry the first run's ledger, budget and commit gate into the second.</p>
+     *
+     * @param conversation where the messages the person sends while the run goes on come from
      */
-    protected RunOutcome underTheHarness(RunRequest request, boolean verbose) {
-        return HarnessRun.standard(registry(), verbose).on(request);
+    protected RunOutcome underTheHarness(RunRequest request, boolean verbose,
+                                         QueuedMessages.Conversation conversation) {
+        return HarnessRun.standard(registry(), verbose).hearing(conversation).on(request);
     }
 
     /**
@@ -319,6 +323,10 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         }
         int timeBudgetSec = (int) context.getOrDefault("timeoutSec", AgentOptions.UNLIMITED);
 
+        // The step before this one is done: what the person sent while it ran joins the history.
+        for (String message : QueuedMessages.in(context).take()) {
+            state.addMessage(message);
+        }
         state.incrementStep();
         // Opens the step's navigable section, and marks the boundary between one step and the next
         // so a long run can be scanned. It used to read "Thinking", which repeated the header bar's
@@ -353,6 +361,7 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         }
         TimerNotice.delivered();
         JobNotice.delivered();
+        QueuedMessages.in(context).delivered();
 
         AgentAction action = AgentActions.from(reply, message -> logWarning("parseAction", message));
         if (action == null) {

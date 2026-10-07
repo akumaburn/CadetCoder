@@ -94,24 +94,36 @@ final class AgentResumeNote {
     }
 
     /**
-     * The classic loop's actions, as the resume point keeps them.
+     * The classic loop's actions and the person's messages, as the resume point keeps them.
      *
      * @param state the run so far, or {@code null}
-     * @return one line per action, the latest {@link #ACTIONS_KEPT} of them
+     * @return one line per action or message, in order, the latest {@link #ACTIONS_KEPT} of them
      */
     static List<String> actionsOf(AgentState state) {
         if (state == null) {
             return List.of();
         }
-        List<AgentState.ActionResult> done = state.getExecutedActions();
-        List<String>                  kept = new ArrayList<>();
-        for (AgentState.ActionResult result
-                : done.subList(Math.max(0, done.size() - ACTIONS_KEPT), done.size())) {
-            String args = result.action.args == null ? "" : String.join(" ", result.action.args);
-            kept.add(oneLine(result.action.command + " " + args) + " -> exit " + result.exitCode
-                     + ": " + oneLine(result.output == null ? "" : result.output));
+        List<AgentState.ActionResult> done     = state.getExecutedActions();
+        List<AgentState.Message>      messages = state.getMessages();
+        List<String>                  all      = new ArrayList<>();
+        int next = 0;
+        for (int i = 0; i <= done.size(); i++) {
+            while (next < messages.size() && messages.get(next).afterActions() == i) {
+                all.add("The user said: " + oneLine(messages.get(next).text()));
+                next++;
+            }
+            if (i < done.size()) {
+                all.add(actionLine(done.get(i)));
+            }
         }
-        return kept;
+        return List.copyOf(all.subList(Math.max(0, all.size() - ACTIONS_KEPT), all.size()));
+    }
+
+    /** One action, its exit code and its output, on one line. */
+    private static String actionLine(AgentState.ActionResult result) {
+        String args = result.action.args == null ? "" : String.join(" ", result.action.args);
+        return oneLine(result.action.command + " " + args) + " -> exit " + result.exitCode
+               + ": " + oneLine(result.output == null ? "" : result.output);
     }
 
     private static void fromRecord(String directory, StringBuilder note) {

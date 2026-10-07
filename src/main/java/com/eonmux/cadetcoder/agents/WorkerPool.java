@@ -21,11 +21,11 @@ import java.util.concurrent.atomic.AtomicInteger;
  *
  * <h2>Why the concurrency is small, and configurable</h2>
  *
- * <p>The binding constraint is not the machine, it is the provider. Every worker runs a full agentic
- * loop, so eight workers are eight concurrent streams of completions against one account and one
- * rate limit — and they share a single retry budget, so they do not merely queue, they fail each
- * other. Three at a time keeps a run genuinely parallel while leaving the provider room to answer;
- * anyone who knows their own limits can raise it.</p>
+ * <p>The binding constraint is not the machine, it is the provider. Every worker runs a full
+ * agentic loop, so eight workers are eight concurrent streams of completions against one account
+ * and one rate limit, and past a handful they spend more time waiting out each other's rate limits
+ * than working. Three at a time keeps a run genuinely parallel while leaving the provider room to
+ * answer; anyone who knows their own limits can raise it.</p>
  *
  * <h2>Why workers cannot spawn workers</h2>
  *

@@ -559,11 +559,11 @@ is capped at half the window, so a model whose published output limit is its
 whole context cannot leave the prompt nothing.
 
 An interruption is `LLMException.Kind.STOPPED`, never `TRANSPORT`. A transport
-failure is retryable, and a run the user stopped must never be offered back to
-them to try again. `ManualRetry` declines whenever a stop is asked, before it
-puts the question and again after the answer arrives. A request to stop cancels
-a prompt that waits for input, and a cancelled prompt answers with an empty
-line, which is what Enter sends.
+failure is retryable, and `RetryPolicy` retries a retryable failure with no
+attempt limit by default. A stop reported as a transport failure would therefore
+never end. The wait between attempts runs in 200 ms slices that check
+`InterruptSignal` and the thread's interrupt flag, so F2 ends a 30-minute wait
+at once.
 
 `TransientPayload` decides whether a 200 that yielded no completion is a
 transient failure. It reads failure wording only inside a top-level `error`
@@ -587,20 +587,8 @@ connection leaks.
 Retries happen in exactly one place. `jdk.httpclient.enableAllMethodRetry` is
 deliberately left unset. It would repeat failed POSTs inside `send()`, invisibly
 and without regard for `Retry-After`, on top of the loop in
-`AbstractLLMBackend`. That would turn a budget of N attempts into an
-unpredictable multiple of it.
-
-A request made inside a loop pass never asks the terminal to retry, because a
-loop runs unattended and a question at the terminal would stall it until someone
-answers. `AIManager` asks `LoopPass.isInAPass`. Inside a pass, `ai/OutageWait`
-waits out a 5xx or a failure to connect: 1, 1, 2, 4, 8, then 15 minutes at a
-time, until two hours pass since the request first failed. The
-`cadet.loop.outage.*` properties set those limits. After that the request fails
-and the loop stops.
-
-`OutageWait` does not wait for a rate limit or a rejected key, because a
-provider that cut the account off answers that way for as long as anyone asks.
-Ctrl-C ends a wait at once, as a stop.
+`AbstractLLMBackend`. That would make each attempt an unpredictable number of
+requests.
 
 `LLMErrorMapper` maps a 429 to `LLMAccountLimitException`, kind
 `ACCOUNT_LIMIT`, when the body says that the account cannot pay. That kind is
@@ -797,8 +785,8 @@ Two more rules hold the same line:
 
 - `ActionRun` collects through `CapturedRun` and never swaps `System.out`, so
   every `OutputCapture.isCapturing()` check answers correctly.
-- `UserAsk.inputPrompt` and `ManualRetry` put the question on the input line
-  itself, so no surface can show a prompt without its question.
+- `UserAsk.inputPrompt` puts the question on the input line itself, so no
+  surface can show a prompt without its question.
 
 ### Interactive shell
 
@@ -834,6 +822,42 @@ along with the text. The code draws the shell as follows:
 
 The modal help overlay (`ShellHelp`) is the exception to all of this, because it
 floats over the transcript and needs edges to read as a panel.
+
+A line sent while a command runs goes to `QueuedMessages` and never starts
+beside the command. The rules are these:
+
+- A message for the model is taken by the conversation that the shell started,
+  before its next request to the model. `IterativeExecutor` adds it to the
+  transcript as `User: <message>`. The agent's classic loop records it in
+  `AgentState` among the actions. The harness adds it as a `PERSON` turn
+  through `RunSignals.fromThePerson`.
+- Only the first conversation opened on the shell's command thread can take a
+  message. `QueuedMessages.open` returns `Conversation.NONE` to a conversation
+  opened inside it, such as a command that a chat runs, and to any other
+  thread. The agent runs its whole loop inside one step, so the executor passes
+  its handle in the step context under `QueuedMessages.CONTEXT_KEY`.
+- A conversation takes lines from the front of the queue only, and stops at the
+  first `/command` or line with a picture. A line therefore never runs before a
+  line sent ahead of it.
+- A conversation calls `Conversation.delivered` once the model answers. When
+  the handle closes, the console names each message that the model never read.
+  Such a message stays part of the run it joined, in its transcript, its resume
+  point and the session, so it is not run again on its own. Run again as well,
+  it would reach the model twice.
+- The classic agent keeps each message in its resume point, so `/resume` shows
+  it among the actions.
+- The registry runs an interruptible command on a thread of its own.
+  `ThreadHandover` carries `QueuedMessages.carrying` across that step, so the
+  new thread is the owner while the command runs.
+- Each pass of `/loop` opens and closes its own conversation, so a message joins
+  the pass that is running.
+- The shell's tick starts the next queued line once no command runs and no
+  prompt waits. A line typed while lines still wait is queued behind them, even
+  when no command runs.
+- F2 drops the whole queue, because a stop ends the work the lines followed.
+  Each queued line is in the history as it was queued, so Up recalls it. F2
+  leaves the text being typed in place. It clears the input line only for a
+  hidden prompt, so a half-typed key does not stay on screen.
 
 `/clear` and Ctrl+L clear the console through `ShellTranscript.clearView`, which
 hides every region so far and keeps it. The scrollback saved with the session is

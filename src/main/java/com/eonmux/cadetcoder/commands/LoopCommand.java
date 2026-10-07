@@ -3,15 +3,12 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.ExitCode;
 import com.eonmux.cadetcoder.OutputFormatter;
-import com.eonmux.cadetcoder.ai.OutageWait;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.session.ResumePoint;
-import com.eonmux.cadetcoder.timers.TimerInterval;
 import com.eonmux.cadetcoder.ui.OutputCapture;
 
 import picocli.CommandLine.Command;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -394,21 +391,14 @@ public class LoopCommand extends LoggingCommandSupport
         return carried.isEmpty() ? null : carried;
     }
 
-    /** @return how long one request in a loop waits for a provider, as a person would write it */
-    private static String outageBudget() {
-        return TimerInterval.render(
-                Duration.ofMillis(OutageWait.fromSystemProperties().budgetMillis()));
-    }
-
     @Override
     public String getUsage() {
         return name() + " [--times=<n>] <goal>\n"
              + "  Runs the goal as a full run, " + DEFAULT_TIMES + " times over by default, each\n"
              + "  pass improving on what the last one left. Every pass runs: none of them stops\n"
              + "  early because the model says the goal is met. Ctrl-C ends it.\n"
-             + "  A provider that stops answering is waited for, up to " + outageBudget()
-             + " per request,\n"
-             + "  without asking anyone; a rejected key or a rate limit stops the loop.\n"
+             + "  A provider that stops answering or rate limits is asked again until it\n"
+             + "  answers; a rejected key stops the loop.\n"
              + "  --times=<n>, -n <n>  how many passes, 1 to " + MOST_TIMES + "\n"
              + "  Example: " + name() + " --times=20 \"raise the test coverage of the parser\"";
     }

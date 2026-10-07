@@ -194,7 +194,8 @@ class WhichHarnessARunGetsIsTheCallersChoiceTest {
     private AgentCommand agentRecording(AtomicReference<RunRequest> asked, RunOutcome answer) {
         return new AgentCommand() {
             @Override
-            protected RunOutcome underTheHarness(RunRequest request, boolean verbose) {
+            protected RunOutcome underTheHarness(RunRequest request, boolean verbose,
+                                                 QueuedMessages.Conversation conversation) {
                 asked.set(request);
                 return answer;
             }
@@ -221,7 +222,8 @@ class WhichHarnessARunGetsIsTheCallersChoiceTest {
         AtomicBoolean loud = new AtomicBoolean();
         AgentCommand agent = new AgentCommand() {
             @Override
-            protected RunOutcome underTheHarness(RunRequest request, boolean verbose) {
+            protected RunOutcome underTheHarness(RunRequest request, boolean verbose,
+                                                 QueuedMessages.Conversation conversation) {
                 loud.set(verbose);
                 return finished(record);
             }

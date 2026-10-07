@@ -102,10 +102,24 @@ public class IterativeExecutor {
         if (!command.supportsIterativeExecution(args)) {
             return command.execute(args);
         }
+        // Opened here, so a command that runs its own loop inside one step takes through it too.
+        try (QueuedMessages.Conversation queued = QueuedMessages.open()) {
+            return run(command, args, queued);
+        }
+    }
 
+    /**
+     * Runs the command, as a conversation or, with nobody there to talk to, step by step.
+     *
+     * @param queued where the messages the person sends while it runs come from
+     * @return the exit code
+     */
+    private int run(IterativeCommand command, String[] args, QueuedMessages.Conversation queued) {
         try {
             Map<String, Object> context          = newContext(command, args);
             lastContext = context;
+            // A closed handle takes nothing, so a context kept after the run is harmless.
+            context.put(QueuedMessages.CONTEXT_KEY, queued);
             String              initialPrompt    = command.getInitialPrompt(args);
             boolean             hasInitialPrompt = initialPrompt != null && !initialPrompt.isEmpty();
 
@@ -298,6 +312,7 @@ public class IterativeExecutor {
      */
     private int runConversation(IterativeCommand command, String[] args, Map<String, Object> context,
                                 String initialPrompt, boolean hasInitialPrompt) {
+        QueuedMessages.Conversation queued = QueuedMessages.in(context);
         // One guard and one compactor per run: their history describes this run and no other.
         IterationProgressGuard guard      = new IterationProgressGuard();
         TranscriptCompactor    compactor  = new TranscriptCompactor();
@@ -336,12 +351,23 @@ public class IterativeExecutor {
             context.put("conversationHistory", transcript);
             recordTurn(transcript, stepResult, nextPrompt);
 
-            llmResponse = ask.requiresUserInput(stepResult)
+            boolean toThePerson = ask.requiresUserInput(stepResult);
+            if (!toThePerson) {
+                // The step is done and the model is next: the moment a message the person sent
+                // while it ran joins the conversation, after the step it waited for.
+                for (String message : queued.take()) {
+                    transcript.add(userEntry(message));
+                }
+            }
+            llmResponse = toThePerson
                           // getUserInput opens its own "User Input Required" sub-header; announcing
                           // the same thing here put two consecutive sub-headers on screen (and, in
                           // the shell, opened two nested sections for one prompt).
                           ? ask.getUserInput(nextPrompt, stepResult.getOutput())
                           : askTheModel(command, iteration, nextPrompt, transcript, guard, compactor);
+            if (!toThePerson) {
+                queued.delivered();
+            }
             // Recorded as soon as it arrives, so a step that sends a turn of its own -- chat's
             // first analysis -- appends after the reply that led to it rather than before.
             if (llmResponse != null) {
@@ -667,6 +693,19 @@ public class IterativeExecutor {
      */
     static String replyEntry(String reply) {
         return "LLM: " + reply;
+    }
+
+    /**
+     * The transcript entry for a message the person sent while the conversation ran.
+     *
+     * <p>Spelled as the session's own record of what the person said, so the model reads it the
+     * way it reads the rest of the person's words.</p>
+     *
+     * @param message what the person sent
+     * @return the entry
+     */
+    static String userEntry(String message) {
+        return "User: " + message;
     }
 
     /** What a command is held to when it states no contract of its own. */

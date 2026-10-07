@@ -108,7 +108,7 @@ public class WorkerPoolTest {
     @Test
     public void noMoreThanTheConfiguredNumberRunAtOnce() throws Exception {
         // The provider, not the machine, is the limit: every worker is a full agentic loop against
-        // one account and one shared retry budget.
+        // one account and one rate limit.
         System.setProperty(WorkerPool.CONCURRENCY_PROPERTY, "2");
         AtomicInteger live = new AtomicInteger();
         AtomicInteger peak = new AtomicInteger();

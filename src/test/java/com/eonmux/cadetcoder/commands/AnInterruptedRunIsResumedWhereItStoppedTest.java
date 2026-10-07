@@ -289,7 +289,8 @@ public class AnInterruptedRunIsResumedWhereItStoppedTest {
         Path record = folder.newFolder("20260101-000000-cut").toPath();
         AgentCommand agent = new AgentCommand() {
             @Override
-            protected RunOutcome underTheHarness(RunRequest request, boolean verbose) {
+            protected RunOutcome underTheHarness(RunRequest request, boolean verbose,
+                                                 QueuedMessages.Conversation conversation) {
                 InterruptSignal.request();
                 throw new RunCutShort(new RunRecord(record),
                                       LLMException.stopped(null, "stub", null, null));
@@ -397,7 +398,8 @@ public class AnInterruptedRunIsResumedWhereItStoppedTest {
                                                RunOutcome answer) {
         return new AgentCommand() {
             @Override
-            protected RunOutcome underTheHarness(RunRequest request, boolean verbose) {
+            protected RunOutcome underTheHarness(RunRequest request, boolean verbose,
+                                                 QueuedMessages.Conversation conversation) {
                 asked.set(request);
                 return answer;
             }

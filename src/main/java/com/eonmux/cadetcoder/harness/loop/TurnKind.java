@@ -19,5 +19,8 @@ public enum TurnKind {
     HARNESS,
 
     /** What a tool answered, which is a copy of something the run still holds. */
-    ANSWER
+    ANSWER,
+
+    /** What the person who started the run sent while it went on, which is never squashed. */
+    PERSON
 }

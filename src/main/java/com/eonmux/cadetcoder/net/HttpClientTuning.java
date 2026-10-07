@@ -50,7 +50,7 @@ public final class HttpClientTuning {
         }
         // jdk.httpclient.enableAllMethodRetry is deliberately NOT set. It would make the JDK repeat
         // failed POSTs inside send(), invisibly and without honouring Retry-After, on top of the
-        // retry loop in AbstractLLMBackend -- turning a configured budget of N attempts into an
-        // unpredictable multiple of it. Retrying belongs in the one place that can report it.
+        // retry loop in AbstractLLMBackend -- making each attempt an unpredictable number of
+        // requests. Retrying belongs in the one place that can report it.
     }
 }

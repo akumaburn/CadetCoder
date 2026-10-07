@@ -1,5 +1,7 @@
 package com.eonmux.cadetcoder.harness.loop;
 
+import java.util.List;
+
 /**
  * What the world outside a run has to say to it while it is going.
  *
@@ -45,6 +47,25 @@ public interface RunSignals {
     String beforeRound();
 
     /**
+     * What the person who started the run sent since the last round, to put in front of the agent.
+     *
+     * <p>Asked before each round, after {@link #beforeRound()}. Each message becomes one turn of
+     * its own, so the agent reads it as the person's words and not as the driver's.</p>
+     *
+     * @return the messages in the order sent, or an empty list for the usual case of none
+     */
+    List<String> fromThePerson();
+
+    /**
+     * Told when the agent has replied, so whatever {@link #fromThePerson()} returned before has
+     * reached it.
+     *
+     * <p>A run can end between the two, on its budget or on a stop, and a message the agent never
+     * read is still owed to somebody.</p>
+     */
+    void agentReplied();
+
+    /**
      * Whether a run the agent says is finished should be questioned rather than ended.
      *
      * @param declaration what the agent said when it declared the work done
@@ -63,6 +84,15 @@ public interface RunSignals {
             @Override
             public String beforeRound() {
                 return "";
+            }
+
+            @Override
+            public List<String> fromThePerson() {
+                return List.of();
+            }
+
+            @Override
+            public void agentReplied() {
             }
 
             @Override

@@ -82,7 +82,28 @@ public class AbstractLLMBackendRetryTest {
     }
 
     @Test
-    public void serverErrorsAreRetriedUpToTheAttemptCap() throws Exception {
+    public void serverErrorsAreRetriedUntilTheyClear() throws Exception {
+        // Well past any count a fixed limit would have used: a provider that is down is asked again
+        // for as long as it takes.
+        HttpResponse<String> unavailable = response(503, "unavailable", null);
+        HttpResponse<String> ok          = response(200, "{}", null);
+        org.mockito.stubbing.OngoingStubbing<CompletableFuture<HttpResponse<String>>> answers =
+                when(mockHttpClient.sendAsync(any(HttpRequest.class),
+                                              any(HttpResponse.BodyHandler.class)));
+        for (int i = 0; i < 40; i++) {
+            answers = answers.thenReturn(CompletableFuture.completedFuture(unavailable));
+        }
+        answers.thenReturn(CompletableFuture.completedFuture(ok));
+
+        HttpResponse<String> result = backend.send(request);
+
+        assertThat(result.statusCode()).isEqualTo(200);
+        verify(mockHttpClient, times(41)).sendAsync(any(HttpRequest.class), any());
+    }
+
+    @Test
+    public void serverErrorsStopAtALimitWhenOneIsSet() throws Exception {
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "4");
         HttpResponse<String> unavailable = response(503, "unavailable", null);
         when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(CompletableFuture.completedFuture(unavailable));
@@ -91,7 +112,57 @@ public class AbstractLLMBackendRetryTest {
 
         // The final failing response comes back so the backend can log and map it.
         assertThat(result.statusCode()).isEqualTo(503);
-        verify(mockHttpClient, times(RetryPolicy.DEFAULT_MAX_ATTEMPTS)).sendAsync(any(HttpRequest.class), any());
+        verify(mockHttpClient, times(4)).sendAsync(any(HttpRequest.class), any());
+    }
+
+    @Test
+    public void aWaitBeforeTheNextAttemptEndsWhenAStopIsAsked() throws Exception {
+        // The wait can be half an hour long, so it has to end on F2 rather than at its end.
+        System.setProperty(RetryPolicy.BASE_DELAY_MS_PROPERTY, "600000");
+        System.setProperty(RetryPolicy.MAX_DELAY_MS_PROPERTY, "600000");
+        HttpResponse<String> unavailable = response(503, "unavailable", null);
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenReturn(CompletableFuture.completedFuture(unavailable));
+        Thread stopper = new Thread(() -> {
+            try {
+                Thread.sleep(300);
+            } catch (InterruptedException ignored) {
+                return;
+            }
+            com.eonmux.cadetcoder.InterruptSignal.request();
+        });
+        long started = System.nanoTime();
+        stopper.start();
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> backend.send(request))
+                    .isInstanceOfSatisfying(LLMException.class, stopped ->
+                            assertThat(stopped.getKind()).isEqualTo(LLMException.Kind.STOPPED));
+        } finally {
+            stopper.join();
+            com.eonmux.cadetcoder.InterruptSignal.clear();
+        }
+        assertThat(java.time.Duration.ofNanos(System.nanoTime() - started))
+                .isLessThan(java.time.Duration.ofSeconds(5));
+    }
+
+    /** A wait set to zero has nothing to sleep through, and still ends on a stop. */
+    @Test
+    public void aRetryWithNoWaitStillEndsWhenAStopIsAsked() throws Exception {
+        System.setProperty(RetryPolicy.BASE_DELAY_MS_PROPERTY, "0");
+        HttpResponse<String> unavailable = response(503, "unavailable", null);
+        when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
+                .thenAnswer(call -> {
+                    com.eonmux.cadetcoder.InterruptSignal.request();
+                    return CompletableFuture.completedFuture(unavailable);
+                });
+        try {
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> backend.send(request))
+                    .isInstanceOfSatisfying(LLMException.class, stopped ->
+                            assertThat(stopped.getKind()).isEqualTo(LLMException.Kind.STOPPED));
+        } finally {
+            com.eonmux.cadetcoder.InterruptSignal.clear();
+        }
+        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any());
     }
 
     @Test
@@ -119,15 +190,19 @@ public class AbstractLLMBackendRetryTest {
     }
 
     @Test
-    public void aRetryAfterLongerThanTheCapStopsTheRetryLoop() throws Exception {
+    public void aRetryAfterLongerThanTheCapIsWaitedForUpToTheCap() throws Exception {
+        // An hour asked for; the cap in this test is five milliseconds. The request is made again
+        // after the cap rather than given up on.
         HttpResponse<String> rateLimited = response(429, "slow down", "3600");
+        HttpResponse<String> ok          = response(200, "{}", null);
         when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
-                .thenReturn(CompletableFuture.completedFuture(rateLimited));
+                .thenReturn(CompletableFuture.completedFuture(rateLimited))
+                .thenReturn(CompletableFuture.completedFuture(ok));
 
         HttpResponse<String> result = backend.send(request);
 
-        assertThat(result.statusCode()).isEqualTo(429);
-        verify(mockHttpClient, times(1)).sendAsync(any(HttpRequest.class), any());
+        assertThat(result.statusCode()).isEqualTo(200);
+        verify(mockHttpClient, times(2)).sendAsync(any(HttpRequest.class), any());
     }
 
     @Test
@@ -160,7 +235,9 @@ public class AbstractLLMBackendRetryTest {
     }
 
     @Test
-    public void ioFailuresAreRetriedThenReportedAsTransportFailures() throws Exception {
+    public void ioFailuresAreReportedAsTransportFailuresOnceALimitEndsTheRetries()
+            throws Exception {
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "3");
         when(mockHttpClient.sendAsync(any(HttpRequest.class), any(HttpResponse.BodyHandler.class)))
                 .thenReturn(CompletableFuture.failedFuture(new IOException("Connection refused")));
 
@@ -170,7 +247,7 @@ public class AbstractLLMBackendRetryTest {
                 .hasMessageContaining("Connection refused")
                 .hasCauseInstanceOf(IOException.class);
 
-        verify(mockHttpClient, times(RetryPolicy.DEFAULT_MAX_ATTEMPTS)).sendAsync(any(HttpRequest.class), any());
+        verify(mockHttpClient, times(3)).sendAsync(any(HttpRequest.class), any());
     }
 
     @Test

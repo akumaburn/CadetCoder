@@ -264,7 +264,9 @@ public final class HelpContent {
     /** Every key the shell answers to. */
     private static Section keyboard() {
         List<Entry> entries = List.of(
-                new Entry("Enter", "Send the line (run the command, or ask the AI)"),
+                new Entry("Enter", "Send the line (run the command, or ask the AI). While a "
+                                   + "command runs, queue it: a message joins the running chat "
+                                   + "or agent run after its current step"),
                 new Entry("Right", "Accept the predicted command name (at end of line)"),
                 new Entry("Up / Down", "Command history (scrolls the focused pane, or picks a "
                                        + "line of the F5 list)"),
@@ -276,7 +278,9 @@ public final class HelpContent {
                 new Entry("Esc", "Back out: a prompt, select mode, a selection, a focused result, "
                                  + "then the line being typed"),
                 new Entry("F1", "Toggle this help"),
-                new Entry("F2", "Interrupt the running command; /resume carries it on"),
+                new Entry("F2", "Interrupt the running command; /resume carries it on. The line "
+                                + "being typed stays; queued lines are dropped, and Up recalls "
+                                + "them"),
                 new Entry("F3", "Print recent command history"),
                 new Entry("F4", "Select mode (the mouse selects; clicks do not open a result)"),
                 new Entry("F5", "List every worker and every job; Enter opens the picked line"),

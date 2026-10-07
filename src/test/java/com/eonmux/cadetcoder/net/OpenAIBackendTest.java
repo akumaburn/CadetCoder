@@ -56,6 +56,7 @@ public class OpenAIBackendTest {
     public void tearDown() {
         System.clearProperty(RetryPolicy.BASE_DELAY_MS_PROPERTY);
         System.clearProperty(RetryPolicy.MAX_DELAY_MS_PROPERTY);
+        System.clearProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY);
     }
 
     @Test
@@ -265,6 +266,8 @@ public class OpenAIBackendTest {
         // Inverted: an unreachable endpoint used to surface as a bare IOException, which callers had
         // no way to tell apart from any other failure. It is now a typed transport failure naming the
         // endpoint, and the original IOException is preserved as the cause.
+        // A limit is set so the failure surfaces; by default the retries do not end.
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "2");
         assertThatThrownBy(() -> openAIBackend.complete(mockPromptData, parameters))
                 .isInstanceOf(LLMTransportException.class)
                 .hasMessageContaining("Cannot reach " + API_ENDPOINT + "/v1/chat/completions")
@@ -405,11 +408,13 @@ public class OpenAIBackendTest {
 
         // When/Then
         // Inverted: rate limiting used to be returned as completion text. It is now retried (a 429 is
-        // transient) and, once the attempts are exhausted, raised as a typed failure.
+        // transient) and, once the attempts a limit allows are spent, raised as a typed failure.
+        // A limit is set so the failure surfaces; by default the retries do not end.
+        System.setProperty(RetryPolicy.MAX_ATTEMPTS_PROPERTY, "3");
         assertThatThrownBy(() -> openAIBackend.complete(mockPromptData, parameters))
                 .isInstanceOf(LLMRateLimitException.class)
                 .hasMessageContaining("Rate limited by provider 'openai'")
                 .hasMessageContaining("Rate limit exceeded");
-        verify(mockHttpClient, times(RetryPolicy.DEFAULT_MAX_ATTEMPTS)).sendAsync(any(HttpRequest.class), any());
+        verify(mockHttpClient, times(3)).sendAsync(any(HttpRequest.class), any());
     }
 }

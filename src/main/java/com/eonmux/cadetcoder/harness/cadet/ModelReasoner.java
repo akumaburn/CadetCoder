@@ -138,6 +138,8 @@ public final class ModelReasoner implements Reasoner {
                 return "YOU SAID";
             case ANSWER:
                 return "THE TOOLS ANSWERED";
+            case PERSON:
+                return "THE PERSON SAID";
             case HARNESS:
             default:
                 return "THE HARNESS SAID";

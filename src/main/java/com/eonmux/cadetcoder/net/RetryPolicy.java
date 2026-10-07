@@ -4,45 +4,44 @@ import java.time.Duration;
 import java.util.Random;
 
 /**
- * Retry rules for provider calls: which failures are worth repeating, how many times, and how long
- * to wait in between.
+ * Retry rules for provider calls: which failures are worth repeating, and how long to wait in
+ * between.
  *
- * <p>Only failures that can plausibly change outcome are retried — HTTP 408, 429 and 5xx, plus
+ * <p>Only failures that can plausibly change outcome are retried -- HTTP 408, 429 and 5xx, plus
  * transport failures. 400/401/403 are never retried: a malformed request stays malformed and a
  * rejected key stays rejected, so repeating them only multiplies the latency before the user sees
  * the real error.</p>
  *
- * <p>Backoff is exponential with full jitter, so concurrent CadetCoder runs hitting the same
- * rate-limited provider do not resynchronise. A provider-supplied {@code Retry-After} always wins
- * over the computed delay; when it exceeds {@link #getMaxDelayMillis()} the request is not retried
- * at all — waiting minutes inside a CLI invocation is worse than failing with "retry later".</p>
+ * <p>A failure that is worth retrying is retried until it clears. There is no limit on attempts
+ * by default: a provider that is down or rate limiting is very often back later, and ending the
+ * run throws away everything the run had built. The person at the terminal stops a retry with F2
+ * or Ctrl-C, and the wait between attempts ends on that stop.</p>
  *
- * <p>The caps are tunable through system properties, matching the convention used elsewhere in the
- * codebase (e.g. {@code cadet.iterative.maxIterations}); out-of-range or unparseable values fall
- * back to the defaults.</p>
+ * <p>Backoff is exponential with jitter, so concurrent CadetCoder runs hitting the same
+ * rate-limited provider do not resynchronise. The delay doubles from {@link #getBaseDelayMillis()}
+ * to {@link #getMaxDelayMillis()}, thirty minutes by default, and then holds there. A
+ * provider-supplied {@code Retry-After} wins over the computed delay, up to the same ceiling.</p>
+ *
+ * <p>The values are tunable through system properties, matching the convention used elsewhere in
+ * the codebase (e.g. {@code cadet.iterative.maxIterations}); out-of-range or unparseable values
+ * fall back to the defaults. {@link #MAX_ATTEMPTS_PROPERTY} sets a limit on attempts for a script
+ * that would rather fail than wait.</p>
  */
 public final class RetryPolicy {
 
-    /**
-     * Total attempts, including the first one.
-     *
-     * <p>Only failures that can plausibly change outcome are retried at all -- 429, 5xx and transport
-     * -- and those are exactly the ones that reward persistence, so the budget is generous. With the
-     * default delays this is a worst case of roughly a minute and a half of waiting before a run
-     * gives up, and about half that on average once jitter is accounted for; a provider that is
-     * rate-limiting or briefly down is usually back well inside it.</p>
-     */
-    public static final int  DEFAULT_MAX_ATTEMPTS  = 10;
+    /** The attempt count that means no limit. */
+    public static final int UNLIMITED = 0;
+
+    public static final int  DEFAULT_MAX_ATTEMPTS  = UNLIMITED;
     public static final long DEFAULT_BASE_DELAY_MS = 500L;
-    public static final long DEFAULT_MAX_DELAY_MS  = 20_000L;
+    public static final long DEFAULT_MAX_DELAY_MS  = 30 * 60_000L;
 
     public static final String MAX_ATTEMPTS_PROPERTY  = "cadet.llm.maxAttempts";
     public static final String BASE_DELAY_MS_PROPERTY = "cadet.llm.retry.baseDelayMs";
     public static final String MAX_DELAY_MS_PROPERTY  = "cadet.llm.retry.maxDelayMs";
 
-    /** Ceiling for {@link #MAX_ATTEMPTS_PROPERTY}; above the default so the knob can also go up. */
-    private static final int  MAX_ALLOWED_ATTEMPTS = 20;
-    private static final long MAX_ALLOWED_DELAY_MS = 300_000L;
+    /** The longest single wait any setting may ask for. */
+    private static final long MAX_ALLOWED_DELAY_MS = DEFAULT_MAX_DELAY_MS;
 
     private final int    maxAttempts;
     private final long   baseDelayMillis;
@@ -54,11 +53,12 @@ public final class RetryPolicy {
     }
 
     /**
-     * @param random source of jitter; injectable so tests can make the backoff deterministic
+     * @param maxAttempts total attempts including the first, or {@link #UNLIMITED}
+     * @param random      source of jitter; injectable so tests can make the backoff deterministic
      */
     public RetryPolicy(int maxAttempts, long baseDelayMillis, long maxDelayMillis, Random random) {
-        if (maxAttempts < 1) {
-            throw new IllegalArgumentException("maxAttempts must be >= 1");
+        if (maxAttempts < 0) {
+            throw new IllegalArgumentException("maxAttempts must be >= 0, where 0 means no limit");
         }
         if (baseDelayMillis < 0 || maxDelayMillis < 0) {
             throw new IllegalArgumentException("delays must not be negative");
@@ -71,7 +71,8 @@ public final class RetryPolicy {
 
     /** Builds a policy from the {@code cadet.llm.*} system properties, falling back to defaults. */
     public static RetryPolicy fromSystemProperties() {
-        int  attempts  = intProperty(MAX_ATTEMPTS_PROPERTY, DEFAULT_MAX_ATTEMPTS, 1, MAX_ALLOWED_ATTEMPTS);
+        int  attempts  = intProperty(MAX_ATTEMPTS_PROPERTY, DEFAULT_MAX_ATTEMPTS, 0,
+                                     Integer.MAX_VALUE);
         long baseDelay = longProperty(BASE_DELAY_MS_PROPERTY, DEFAULT_BASE_DELAY_MS, 0, MAX_ALLOWED_DELAY_MS);
         long maxDelay  = longProperty(MAX_DELAY_MS_PROPERTY, DEFAULT_MAX_DELAY_MS, 0, MAX_ALLOWED_DELAY_MS);
         return new RetryPolicy(attempts, baseDelay, maxDelay);
@@ -93,13 +94,15 @@ public final class RetryPolicy {
      * @return whether another attempt should be made
      */
     public boolean shouldRetry(LLMException failure, int attempt) {
-        if (failure == null || attempt >= maxAttempts || !failure.isRetryable()) {
+        if (failure == null || !failure.isRetryable()) {
             return false;
         }
-        Duration retryAfter = failure.getRetryAfter();
-        // A Retry-After longer than the cap means "come back much later"; honouring it would stall
-        // the CLI, and ignoring it would hammer a provider that just asked us to stop.
-        return retryAfter == null || retryAfter.toMillis() <= maxDelayMillis;
+        return isUnlimited() || attempt < maxAttempts;
+    }
+
+    /** @return whether a retryable failure is retried for as long as it lasts */
+    public boolean isUnlimited() {
+        return maxAttempts == UNLIMITED;
     }
 
     /**
@@ -113,9 +116,11 @@ public final class RetryPolicy {
         if (retryAfter != null) {
             return Math.min(Math.max(0L, retryAfter.toMillis()), maxDelayMillis);
         }
-        int  exponent = Math.max(0, attempt - 1);
+        // Counted as a long and stopped at the ceiling, so an attempt number in the millions costs
+        // a few dozen doublings rather than overflowing.
+        long exponent = Math.max(0L, (long) attempt - 1);
         long ceiling  = baseDelayMillis;
-        for (int i = 0; i < exponent && ceiling < maxDelayMillis; i++) {
+        for (long i = 0; i < exponent && ceiling > 0 && ceiling < maxDelayMillis; i++) {
             ceiling = Math.min(ceiling * 2, maxDelayMillis);
         }
         if (ceiling <= 0) {
@@ -125,6 +130,7 @@ public final class RetryPolicy {
         return half + (long) (random.nextDouble() * (ceiling - half));
     }
 
+    /** @return total attempts including the first, or {@link #UNLIMITED} */
     public int getMaxAttempts() {
         return maxAttempts;
     }

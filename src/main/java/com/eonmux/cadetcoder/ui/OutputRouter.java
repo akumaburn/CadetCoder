@@ -218,7 +218,7 @@ public class OutputRouter {
      * <p>This is the one point every prompt passes through. {@code IterativeExecutor} has its own,
      * narrower version for the questions a STEP produces, and that left every other asker
      * uncovered: {@code bash} confirming a command, {@code write} confirming an overwrite,
-     * {@code undo} confirming a reset, plan mode, a notebook edit, a manual retry. Run any of those
+     * {@code undo} confirming a reset, plan mode, a notebook edit. Run any of those
      * inside a worker and it took the shell's input line for a question the user never saw, because
      * a worker's output is collected into its own transcript while the bare prompt went to the
      * terminal.</p>

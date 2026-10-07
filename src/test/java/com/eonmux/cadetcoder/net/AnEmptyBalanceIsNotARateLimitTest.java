@@ -81,4 +81,27 @@ public class AnEmptyBalanceIsNotARateLimitTest {
         assertThat(mapped("zai", "<html>429 Too Many Requests</html>"))
                 .isInstanceOf(LLMRateLimitException.class);
     }
+
+    /**
+     * OpenAI, and the services that copy its errors, send a balance that has run out as a 429 with
+     * {@code insufficient_quota}. Retries do not end, so a retried one would wait forever.
+     */
+    @Test
+    public void anOpenAiQuotaThatRanOutIsNotRetried() {
+        LLMException failure = mapped("openai",
+                "{\"error\":{\"message\":\"You exceeded your current quota.\","
+                + "\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}");
+
+        assertThat(failure.getKind()).isEqualTo(LLMException.Kind.ACCOUNT_LIMIT);
+        assertThat(failure.isRetryable()).isFalse();
+        assertThat(failure.getMessage()).contains("insufficient_quota");
+    }
+
+    @Test
+    public void anOpenAiRateLimitIsStillRetried() {
+        assertThat(mapped("openai",
+                "{\"error\":{\"message\":\"Rate limit reached\","
+                + "\"type\":\"requests\",\"code\":\"rate_limit_exceeded\"}}")
+                           .isRetryable()).isTrue();
+    }
 }
