@@ -55,10 +55,6 @@ public class AjobOutlivesTheStepThatStartedItTest {
         assertThat(job.awaitEnd(Duration.ofSeconds(20)))
                 .as("the command should have finished well inside the wait")
                 .isTrue();
-        // The reader is on its own thread and the pipe closes a moment after the process does.
-        for (int i = 0; i < 100 && job.output().produced() == 0; i++) {
-            Thread.sleep(20);
-        }
         return job;
     }
 
@@ -114,6 +110,25 @@ public class AjobOutlivesTheStepThatStartedItTest {
         assertThat(job.state()).isEqualTo(BackgroundJob.State.STOPPED);
         assertThat(job.succeeded()).as("a job that was killed did not succeed").isFalse();
         assertThat(job.stop()).as("there is nothing left to stop").isFalse();
+    }
+
+    @Test
+    void stoppingAjobEndsWhatItLeftRunning() throws Exception {
+        BackgroundJob job = JobRegistry.start("sleep 30 & sleep 30", null, HERE);
+        List<ProcessHandle> children = List.of();
+        for (int i = 0; i < 250 && children.size() < 2; i++) {
+            Thread.sleep(20);
+            children = ProcessHandle.of(job.pid().orElseThrow()).orElseThrow()
+                                    .descendants().toList();
+        }
+        assertThat(children).hasSize(2);
+
+        assertThat(job.stop()).isTrue();
+
+        assertThat(job.state()).isEqualTo(BackgroundJob.State.STOPPED);
+        assertThat(children)
+                .as("a child left running is part of the job and holds its output open")
+                .noneMatch(ProcessHandle::isAlive);
     }
 
     @Test
@@ -191,6 +206,31 @@ public class AjobOutlivesTheStepThatStartedItTest {
         assertThat(JobRegistry.takeFinished())
                 .as("a prompt nobody sent leaves the ending still owed to somebody")
                 .containsExactly(started[0]);
+    }
+
+    /** More than a pipe holds, so the process ends while the reader still has lines to copy. */
+    @Test
+    void ajobIsDoneOnlyOnceWhatItPrintedIsAllRead() throws Exception {
+        BackgroundJob job = JobRegistry.start("seq 1 200000", null, HERE);
+
+        assertThat(job.awaitEnd(Duration.ofSeconds(20))).isTrue();
+
+        assertThat(job.isDone()).isTrue();
+        assertThat(job.output().produced())
+                .as("a job announced as finished must have all its output in hand")
+                .isEqualTo(200_000);
+    }
+
+    /** A child left running holds the pipe open, and must not keep the job from ending. */
+    @Test
+    void achildHoldingTheOutputOpenDoesNotKeepTheJobRunning() throws Exception {
+        BackgroundJob job = JobRegistry.start("echo started; sleep 10 &", null, HERE);
+
+        assertThat(job.awaitEnd(Duration.ofSeconds(5))).isTrue();
+
+        assertThat(job.isDone()).isTrue();
+        assertThat(job.state()).isEqualTo(BackgroundJob.State.EXITED);
+        assertThat(job.readNew(0).lines()).containsExactly("started");
     }
 
     @Test

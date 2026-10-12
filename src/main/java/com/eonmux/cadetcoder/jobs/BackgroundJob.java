@@ -7,6 +7,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * One shell command left running while the conversation goes on.
@@ -34,6 +36,14 @@ import java.util.Optional;
  * interrupting the thread does not end it. A non-daemon thread there would keep the whole session
  * from exiting until something unrelated happened to stop. {@code BashCommand} learned the same
  * thing the same way.</p>
+ *
+ * <h2>Why a job ends when its output is read, not when its process exits</h2>
+ *
+ * <p>The process can exit while the reader still has lines to copy out of the pipe, and the last
+ * lines of a build are the ones anybody reads. A job counted done at the exit is announced as
+ * finished with its error missing. So a job is done once the reader reaches the end of the pipe,
+ * or once {@link #DRAIN_GRACE_MILLIS} has passed after the exit: a child the command left running
+ * can hold the pipe open, and the job has still ended.</p>
  */
 public final class BackgroundJob {
 
@@ -50,6 +60,9 @@ public final class BackgroundJob {
     /** How long a stopped job is given to end politely before it is ended for it. */
     private static final long TERMINATE_GRACE_MILLIS = 2_000;
 
+    /** How long after the exit the reader is given to reach the end of the pipe. */
+    private static final long DRAIN_GRACE_MILLIS = 1_000;
+
     private final String  id;
     private final String  command;
     private final String  description;
@@ -59,10 +72,19 @@ public final class BackgroundJob {
 
     private final JobOutput output = new JobOutput();
 
+    /** Released when the reader reaches the end of the pipe. */
+    private final CountDownLatch drained = new CountDownLatch(1);
+
     /** Where a reader of this job's output has got to; see {@link JobOutput}. */
     private long cursor;
 
     private volatile Instant endedAt;
+
+    /**
+     * When the exit was noticed, on the clock {@link #DRAIN_GRACE_MILLIS} is measured on. Written
+     * before {@link #endedAt}, so whoever sees that set sees this too.
+     */
+    private volatile long exitNoticedNanos;
     private volatile boolean stopRequested;
 
     /**
@@ -119,6 +141,8 @@ public final class BackgroundJob {
             // The pipe went away, which is what happens when the process is killed. Whatever was
             // read is what there is; the exit code is collected from the process, not from here.
             output.append("[output stopped: " + closed.getMessage() + "]");
+        } finally {
+            drained.countDown();
         }
     }
 
@@ -163,22 +187,28 @@ public final class BackgroundJob {
 
     /** @return whether it has finished, however it finished */
     public boolean isDone() {
-        return !process.isAlive();
+        if (process.isAlive()) {
+            return false;
+        }
+        noteEnded();
+        return drained.getCount() == 0
+               || System.nanoTime() - exitNoticedNanos
+                  >= TimeUnit.MILLISECONDS.toNanos(DRAIN_GRACE_MILLIS);
     }
 
     /** @return where it has got to */
     public State state() {
-        if (process.isAlive()) {
+        if (!isDone()) {
             return State.RUNNING;
         }
         return stopRequested ? State.STOPPED : State.EXITED;
     }
 
     /**
-     * @return the exit code, once it has one; empty while it is still running
+     * @return the exit code, once it is done; empty while it is still running
      */
     public Optional<Integer> exitCode() {
-        return process.isAlive() ? Optional.empty() : Optional.of(process.exitValue());
+        return isDone() ? Optional.of(process.exitValue()) : Optional.empty();
     }
 
     /** @return whether it ended on its own with an exit code of zero */
@@ -194,7 +224,8 @@ public final class BackgroundJob {
      */
     void noteEnded() {
         if (endedAt == null && !process.isAlive()) {
-            endedAt = Instant.now();
+            exitNoticedNanos = System.nanoTime();
+            endedAt          = Instant.now();
         }
     }
 
@@ -269,23 +300,34 @@ public final class BackgroundJob {
      * down leaves whatever it was writing half-written. The grace is short: this is called when
      * somebody has already decided the job should stop.</p>
      *
+     * <p>The command's children are ended with it. A child it left running is part of the job,
+     * and it holds the output open, so the job would otherwise count as running until the drain
+     * grace ran out.</p>
+     *
      * @return whether there was anything still running to stop
      */
     public boolean stop() {
-        if (!process.isAlive()) {
+        if (isDone()) {
             return false;
         }
         stopRequested = true;
+        List<ProcessHandle> children = process.descendants().toList();
+        children.forEach(ProcessHandle::destroy);
         process.destroy();
         try {
-            if (!process.waitFor(TERMINATE_GRACE_MILLIS, java.util.concurrent.TimeUnit.MILLISECONDS)) {
+            if (!process.waitFor(TERMINATE_GRACE_MILLIS, TimeUnit.MILLISECONDS)) {
+                children.forEach(ProcessHandle::destroyForcibly);
                 process.destroyForcibly();
+                process.waitFor(TERMINATE_GRACE_MILLIS, TimeUnit.MILLISECONDS);
             }
+            noteEnded();
+            drained.await(DRAIN_GRACE_MILLIS, TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
+            children.forEach(ProcessHandle::destroyForcibly);
             process.destroyForcibly();
+            noteEnded();
         }
-        noteEnded();
         return true;
     }
 
@@ -293,16 +335,19 @@ public final class BackgroundJob {
      * Waits for this job to end.
      *
      * @param timeout how long to wait at most
-     * @return whether it had ended by the time the wait was over
+     * @return whether it was done, as {@link #isDone()} means it, by the time the wait was over
      * @throws InterruptedException when the waiting thread is interrupted
      */
     public boolean awaitEnd(Duration timeout) throws InterruptedException {
-        boolean ended = process.waitFor(timeout.toMillis(),
-                                        java.util.concurrent.TimeUnit.MILLISECONDS);
-        if (ended) {
-            noteEnded();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+            return false;
         }
-        return ended;
+        noteEnded();
+        long left = Math.min(TimeUnit.NANOSECONDS.toMillis(deadline - System.nanoTime()),
+                             DRAIN_GRACE_MILLIS);
+        drained.await(Math.max(0, left), TimeUnit.MILLISECONDS);
+        return isDone();
     }
 
     @Override

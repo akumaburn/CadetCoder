@@ -56,9 +56,6 @@ public class AjobsOwnOptionsEndWhereTheCommandBeginsTest {
         BackgroundJob started =
                 JobRegistry.start("printf 'one\\ntwo\\nthree\\n'", null, HERE);
         assertThat(started.awaitEnd(Duration.ofSeconds(20))).isTrue();
-        for (int i = 0; i < 100 && started.output().produced() < 3; i++) {
-            Thread.sleep(20);
-        }
         return started;
     }
 
