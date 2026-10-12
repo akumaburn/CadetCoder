@@ -137,6 +137,31 @@ class WhatACompletionCostIsHandedBackWithItTest {
         }
     }
 
+    /**
+     * A retried request is billed once per attempt, and every attempt sends the same prompt, so
+     * the prompt's size is one attempt's count.
+     */
+    @Test
+    void aRetriedRequestIsBilledPerAttemptAndItsPromptMeasuredOnce() throws Exception {
+        try (MockedStatic<ConfigManager> configMock = configured();
+             MockedStatic<SessionManager> sessionMock = mockStatic(SessionManager.class)) {
+            sessionMock.when(SessionManager::getInstance).thenReturn(mock(SessionManager.class));
+            java.util.concurrent.atomic.AtomicInteger attempts =
+                    new java.util.concurrent.atomic.AtomicInteger();
+
+            AIManager manager = managerAnswering(() -> {
+                ReportedUsage.report(REPORTED);
+                return attempts.incrementAndGet() == 1 ? "   " : "an answer";
+            });
+
+            Completion completion =
+                    manager.completeMeasured(new PromptData("system", "user"), new HashMap<>());
+
+            assertThat(completion.tokensIn()).isEqualTo(2_000L);
+            assertThat(completion.promptTokens()).isEqualTo(1_000L);
+        }
+    }
+
     @Test
     void aProviderThatReportsNothingStillSaysWhatItCostAndSaysItIsAGuess() throws Exception {
         try (MockedStatic<ConfigManager> configMock = configured();

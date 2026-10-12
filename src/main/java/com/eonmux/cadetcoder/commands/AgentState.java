@@ -29,8 +29,9 @@ final class AgentState {
      */
     private final ActionLoopGuard loopGuard = new ActionLoopGuard();
 
-    private int     currentStep = 0;
-    private boolean complete    = false;
+    private int     currentStep    = 0;
+    private boolean complete       = false;
+    private int     outputsLeftOut = 0;
 
     /**
      * @param task     what the agent was asked to do
@@ -96,6 +97,23 @@ final class AgentState {
 
     List<ActionResult> getExecutedActions() {
         return executedActions;
+    }
+
+    /** @return how many of the oldest actions have their output left out of the prompt */
+    int outputsLeftOut() {
+        return outputsLeftOut;
+    }
+
+    /**
+     * Leaves the output of every action before {@code index} out of the prompt.
+     *
+     * <p>An output left out stays out. Bringing one back would change the prompt's prefix again on
+     * the next step, and a provider serves only an unchanged prefix from its cache.</p>
+     *
+     * @param index the first action whose output stays in the prompt
+     */
+    void leaveOutOutputsBefore(int index) {
+        outputsLeftOut = Math.max(outputsLeftOut, Math.min(index, executedActions.size()));
     }
 
     /**

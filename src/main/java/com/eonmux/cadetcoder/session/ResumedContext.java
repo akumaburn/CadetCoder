@@ -1,6 +1,6 @@
 package com.eonmux.cadetcoder.session;
 
-import com.eonmux.cadetcoder.ai.metrics.TokenEstimator;
+import com.eonmux.cadetcoder.ai.PromptSize;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -99,7 +99,7 @@ public final class ResumedContext {
             if (entry == null || entry.isBlank()) {
                 continue;
             }
-            int cost = TokenEstimator.estimate(entry);
+            int cost = PromptSize.tokens(entry);
             if (spent + cost > allowance) {
                 break;
             }

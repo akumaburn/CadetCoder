@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * A provider that answers with what the test says, and remembers what it was asked.
@@ -108,8 +109,23 @@ public final class StubbedProvider implements AutoCloseable {
         return install(new Recorder(List.of(), failure));
     }
 
+    /**
+     * Installs a provider that answers each request as {@code answer} says.
+     *
+     * <p>For the cases where the answer depends on what was sent: the function may report usage the
+     * way a backend does, or throw the failure a provider gives for that prompt.</p>
+     *
+     * @param answer what the model says to a request; it may throw
+     * @return the installed stub, which must be closed
+     */
+    public static StubbedProvider answeringWith(Function<PromptData, String> answer) {
+        Recorder recorder = new Recorder(List.of(), null);
+        recorder.script = answer;
+        return install(recorder);
+    }
+
     private static StubbedProvider install(Recorder recorder) {
-        if (recorder.replies.isEmpty() && recorder.failure == null) {
+        if (recorder.replies.isEmpty() && recorder.failure == null && recorder.script == null) {
             throw new IllegalArgumentException("a stubbed provider needs something to answer with");
         }
         try {
@@ -172,6 +188,7 @@ public final class StubbedProvider implements AutoCloseable {
         private final List<PromptData>  asked = new ArrayList<>();
         private       int               stoppedAt;
         private       int               refusedAt;
+        private       Function<PromptData, String> script;
 
         private Recorder(List<String> replies, RuntimeException failure) {
             this.replies = replies;
@@ -194,6 +211,9 @@ public final class StubbedProvider implements AutoCloseable {
             }
             if (failure != null) {
                 throw failure;
+            }
+            if (script != null) {
+                return script.apply(promptData);
             }
             int turn = asked.size() - 1;
             return replies.get(Math.min(turn, replies.size() - 1));

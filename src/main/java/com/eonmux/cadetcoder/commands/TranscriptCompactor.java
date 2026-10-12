@@ -3,7 +3,7 @@ package com.eonmux.cadetcoder.commands;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.ContextWindow;
 import com.eonmux.cadetcoder.ai.OutputWindow;
-import com.eonmux.cadetcoder.ai.metrics.TokenEstimator;
+import com.eonmux.cadetcoder.ai.PromptSize;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 
@@ -23,6 +23,14 @@ import java.util.List;
  * <p>It is still worth having, because not compacting does not degrade gracefully. An over-length
  * prompt is a 400, which is terminal — the retry policy will not repeat it — so the run ends and the
  * whole task is lost. A rare, expensive request beats that.</p>
+ *
+ * <h2>How a prompt is measured</h2>
+ *
+ * <p>In the configured model's own tokens, through {@link PromptSize}, once its provider counts
+ * one prompt. The standard four characters per token undercounts a tokenizer that splits code and
+ * logs finer, and a limit measured with it is reached after the model's real limit. A refusal the
+ * estimate does not foresee is still answered: {@link #fitAfterRefusal} folds on the provider's
+ * word, and the loop asks again.</p>
  *
  * <p>Two consequences follow directly and shape everything below: a verbatim HEAD is preserved, so
  * the system prompt plus that head stay cache-eligible rather than only the system prompt; and the
@@ -48,34 +56,26 @@ public final class TranscriptCompactor {
     static final int MINIMUM_BUDGET_TOKENS = 1024;
 
     /**
-     * Reduction below which a compaction is not worth repeating.
+     * Reduction below which a fold the prompt does not need is not applied.
      *
-     * <p>If folding the middle does not make the transcript meaningfully smaller, compaction is
-     * switched off for the rest of the run. That is the answer to a transcript whose retained head
-     * and tail are themselves most of its bulk: repeating a compaction that reclaims nothing would
-     * rewrite the prefix on every turn, paying the cache cost over and over for no gain.</p>
+     * <p>A fold rewrites the prompt's prefix and throws the provider-side cache away. When the
+     * prompt fits without it and the fold would reclaim less than this share, the cache is worth
+     * more than the saving, and the transcript is left as it is. When the prompt does not fit, any
+     * reclaim is applied: the alternative is a request the provider refuses.</p>
      *
-     * <h2>Why a small reclaim is still applied</h2>
+     * <h2>Why nothing is switched off for the rest of the run</h2>
      *
-     * <p>It used to be discarded as well as latched off, which answered "this prompt does not fit"
-     * with the prompt unchanged and nothing said. The two questions are separate: whether to fold
-     * AGAIN is about cost, and whether to keep THIS fold is about whether the request can be sent
-     * at all. A reduction too small to be worth repeating is still the difference between a request
-     * and a 400 that ends the run, so it is kept whenever the prompt does not otherwise fit.</p>
+     * <p>A turn whose fold cannot help says nothing about a later turn: the run keeps growing, and
+     * a later transcript has a middle to fold. Measuring a fold costs no request, so it is measured
+     * again on every turn past the trigger, and applied only when it is needed or worth having.</p>
      */
     static final double MINIMUM_RECLAIM = 0.20;
 
-    private boolean latchedOff;
-    private int     compactions;
+    private int compactions;
 
     /** @return how many times this run has compacted */
     public int compactions() {
         return compactions;
-    }
-
-    /** @return whether compaction has given up for the rest of this run */
-    public boolean isLatchedOff() {
-        return latchedOff;
     }
 
     /**
@@ -90,6 +90,18 @@ public final class TranscriptCompactor {
         int window = ContextWindow.tokens();
         return Math.max(MINIMUM_BUDGET_TOKENS,
                         window - replyReserveTokens(window) - SAFETY_MARGIN_TOKENS);
+    }
+
+    /**
+     * The size at which a prompt is made smaller.
+     *
+     * @return the trigger share of the input budget, in tokens
+     */
+    public static long triggerTokens() {
+        Configuration.CompactionConfig settings = settings();
+        double share = settings == null ? new Configuration.CompactionConfig().getTrigger()
+                                        : settings.getTrigger();
+        return Math.max(1L, (long) (share * effectiveBudgetTokens()));
     }
 
     /**
@@ -124,51 +136,79 @@ public final class TranscriptCompactor {
      * was the provider's 400, which is terminal. The system prompt is therefore counted in the
      * fold's limit and the total is checked once the fold is done.</p>
      *
-     * @param transcript   the run's transcript; modified in place when compaction happens
-     * @param systemPrompt the system half of the prompt, which counts against the same budget
+     * <h2>Why a run going in circles is folded only when it has to be</h2>
+     *
+     * <p>Rewriting history under a model that is repeating itself removes the context that would
+     * let it notice. That is a reason to wait while the prompt still fits, and no reason at all
+     * once it does not: the request would be refused and the run would end.</p>
+     *
+     * @param transcript    the run's transcript; modified in place when compaction happens
+     * @param systemPrompt  the system half of the prompt, which counts against the same budget
      * @param safeToCompact whether the run is in a state where rewriting history is sensible
      * @return a description of what was folded, and of what it could not fit, or {@code null} when
      *         nothing was done
      */
-    public String compactIfNeeded(List<String> transcript, String systemPrompt, boolean safeToCompact) {
-        if (latchedOff || transcript == null || transcript.isEmpty() || !safeToCompact) {
-            return null;
-        }
+    public String compactIfNeeded(List<String> transcript, String systemPrompt,
+                                  boolean safeToCompact) {
         Configuration.CompactionConfig settings = settings();
-        if (settings == null || !settings.isEnabled()) {
+        if (transcript == null || transcript.isEmpty() || settings == null
+            || !settings.isEnabled()) {
             return null;
         }
-
-        int budget      = effectiveBudgetTokens();
-        int system      = TokenEstimator.estimate(systemPrompt == null ? "" : systemPrompt);
-        int before      = estimateTranscript(transcript);
-        int promptToken = system + before;
-        if (promptToken < settings.getTrigger() * budget) {
+        int budget = effectiveBudgetTokens();
+        int system = PromptSize.tokens(systemPrompt);
+        int before = estimateTranscript(transcript);
+        if (system + before < settings.getTrigger() * budget) {
             return null;
         }
+        boolean fits = system + before <= budget;
+        if (fits && !safeToCompact) {
+            return null;
+        }
+        return fold(transcript, settings, budget, system, before, fits);
+    }
 
+    /**
+     * Folds {@code transcript} in place after the provider refused the prompt as too long.
+     *
+     * <p>The refusal is the provider's own count, so the fold is made whatever the estimate says:
+     * below the trigger, and while the model repeats itself. The fold aims at the same target as
+     * any other.</p>
+     *
+     * @param transcript   the run's transcript; modified in place when compaction happens
+     * @param systemPrompt the system half of the prompt, which counts against the same budget
+     * @return a description of what was folded, or {@code null} when nothing could be
+     */
+    public String fitAfterRefusal(List<String> transcript, String systemPrompt) {
+        Configuration.CompactionConfig settings = settings();
+        if (transcript == null || transcript.isEmpty() || settings == null
+            || !settings.isEnabled()) {
+            return null;
+        }
+        return fold(transcript, settings, effectiveBudgetTokens(),
+                    PromptSize.tokens(systemPrompt), estimateTranscript(transcript), false);
+    }
+
+    /**
+     * Folds the transcript when a fold reclaims anything worth having.
+     *
+     * @param fits whether the prompt fits as it is, which makes a small reclaim not worth the cache
+     */
+    private String fold(List<String> transcript, Configuration.CompactionConfig settings,
+                        int budget, int system, int before, boolean fits) {
         int head = Math.max(0, settings.getKeepHeadEntries());
         int tail = Math.max(1, settings.getKeepTailEntries());
         if (transcript.size() <= head + tail) {
-            // Nothing in the middle to fold: the head and tail alone are the whole transcript, so a
-            // compaction cannot reclaim anything and repeating it every turn would be pure cost.
-            return giveUp(promptToken, budget);
+            // Nothing in the middle to fold: the head and tail alone are the whole transcript.
+            return cannotFit(system + before, budget);
         }
 
-        List<String> folded = fold(transcript, head, tail, budget, settings.getTarget(), system);
+        List<String> folded = folded(transcript, head, tail, budget, settings.getTarget(), system);
         int          after  = estimateTranscript(folded);
-        boolean      fits   = system + after <= budget;
-
-        if (after >= before || (after > before * (1.0 - MINIMUM_RECLAIM) && fits)) {
-            // Nothing worth having: either the fold reclaimed nothing at all, or it reclaimed too
-            // little to be worth repeating and the prompt fits without it. Rewriting the prefix
-            // would throw the provider-side cache away to buy a saving nobody needs.
-            return giveUp(promptToken, budget);
-        }
-        if (after > before * (1.0 - MINIMUM_RECLAIM)) {
-            // Too little to be worth doing again, and the prompt does not fit without it, so it is
-            // applied once and this run stops trying.
-            latchedOff = true;
+        if (after >= before || (fits && after > before * (1.0 - MINIMUM_RECLAIM))) {
+            // Either the fold reclaims nothing, or the prompt fits without it and the saving is
+            // too small to be worth the cache.
+            return cannotFit(system + before, budget);
         }
 
         int dropped = transcript.size() - folded.size() + 1; // +1: the marker replaced them
@@ -178,17 +218,12 @@ public final class TranscriptCompactor {
 
         String summary = dropped + " earlier step" + (dropped == 1 ? "" : "s") + " folded, ~"
                          + (before - after) + " tokens reclaimed";
-        if (fits) {
-            return summary;
-        }
-        // The fold has taken the transcript down to its head, its marker and one entry, so there is
-        // nothing left for another turn to reclaim.
-        latchedOff = true;
-        return summary + "; still " + measured(system + after, budget);
+        return system + after <= budget ? summary
+                                        : summary + "; still " + measured(system + after, budget);
     }
 
     /**
-     * Stops trying, and says plainly when the prompt is still too big to send.
+     * Leaves the transcript as it is, and says plainly when the prompt is still too big to send.
      *
      * <p>Silence here was the whole of the problem: a prompt that did not fit was handed back
      * unchanged with {@code null} meaning "nothing to report", and the next thing that happened was
@@ -204,8 +239,7 @@ public final class TranscriptCompactor {
      * @param budget       what it has to fit inside
      * @return {@code null}, because nothing was folded
      */
-    private String giveUp(int promptTokens, int budget) {
-        latchedOff = true;
+    static String cannotFit(int promptTokens, int budget) {
         if (promptTokens > budget) {
             ContextWindow.Window window = ContextWindow.current();
             OutputFormatter.printWarning(
@@ -285,25 +319,23 @@ public final class TranscriptCompactor {
      *                     get to spend; counting the transcript alone against the target left a
      *                     fold satisfied while the prompt it belonged to was still too big
      */
-    private List<String> fold(List<String> transcript, int head, int tail, int budget, double target,
-                              int systemTokens) {
-        List<String> result  = new ArrayList<>(transcript.subList(0, Math.min(head, transcript.size())));
+    private static List<String> folded(List<String> transcript, int head, int tail, int budget,
+                                       double target, int systemTokens) {
+        List<String> result   = new ArrayList<>(transcript.subList(0, Math.min(head,
+                                                                        transcript.size())));
         int          tailFrom = Math.max(head, transcript.size() - tail);
 
         // Written with the count as it stands, and rewritten once the fold has finished. It goes in
         // now rather than at the end so the loop below weighs a transcript that includes it.
-        //
-        // It used to be written once, here, and the loop below then dropped further entries without
-        // touching it: a fold that gave up 33 steps told the model 28 of them were still in front of
-        // it, and contradicted the summary line the caller prints, which IS counted from the
-        // finished sizes.
         result.add(marker(tailFrom - head));
         result.addAll(transcript.subList(tailFrom, transcript.size()));
 
         // Still over target: give up more of the tail's oldest entries, keeping the newest.
-        int limit = Math.max(0, (int) (target * budget) - systemTokens);
-        while (estimateTranscript(result) > limit && result.size() > head + 2) {
-            result.remove(head + 1);
+        String model = PromptSize.configuredModel();
+        int    limit = Math.max(0, (int) (target * budget) - systemTokens);
+        int    size  = estimateTranscript(result);
+        while (size > limit && result.size() > head + 2) {
+            size -= PromptSize.tokens(model, result.remove(head + 1));
         }
 
         // result is: the head, one marker, and whatever survived of the tail -- so everything the
@@ -326,11 +358,10 @@ public final class TranscriptCompactor {
 
     /** @return the estimated token cost of the transcript as it would be rendered */
     static int estimateTranscript(List<String> transcript) {
-        int total = 0;
+        String model = PromptSize.configuredModel();
+        int    total = 0;
         for (String entry : transcript) {
-            if (entry != null) {
-                total += TokenEstimator.estimate(entry);
-            }
+            total += PromptSize.tokens(model, entry);
         }
         return total;
     }

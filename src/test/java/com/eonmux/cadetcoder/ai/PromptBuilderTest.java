@@ -379,4 +379,31 @@ public class PromptBuilderTest {
         assertThat(userPrompt).contains("Subject.java");
         assertThat(userPrompt).contains("analyze this");
     }
+
+    /**
+     * The budget is the model's, so the prompt is measured in the model's own tokens.
+     *
+     * <p>At four characters per token this prompt fits, and at the two the provider counted it does
+     * not; sent whole, the provider would refuse it.</p>
+     */
+    @Test
+    void aPromptIsCutToTheBudgetInTheModelsOwnTokens() {
+        PromptBuilder builder = new PromptBuilder("analyze")
+                .setTokenBudget(1_500)
+                .addCodeFile("Subject.java", "int answer = 42;\n".repeat(160));
+        assertThat(builder.buildCompletePromptData("analyze this").getUserPrompt())
+                .doesNotContain("[Content truncated to fit token budget]");
+
+        com.eonmux.cadetcoder.ai.metrics.TokenCalibration.observe(PromptSize.configuredModel(),
+                                                                 20_000, 10_000);
+        try {
+            String cut = builder.buildCompletePromptData("analyze this").getUserPrompt();
+
+            assertThat(cut).contains("[Content truncated to fit token budget]");
+            assertThat(PromptSize.tokens(cut)).as("the budget, and the note saying it was cut")
+                                              .isLessThanOrEqualTo(1_000 + 30);
+        } finally {
+            com.eonmux.cadetcoder.ai.metrics.TokenCalibration.clear();
+        }
+    }
 }

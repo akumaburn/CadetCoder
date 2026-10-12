@@ -360,14 +360,50 @@ that would work without them does not fail.
 `TranscriptCompactor` folds the run's transcript when the prompt reaches
 `compaction.trigger` of the usable input budget, 0.80 by default. It keeps a
 verbatim head, because caching matches a leading prefix. It targets well below
-the trigger, so a run does not fold every turn. It latches off when a fold
-reclaims less than a fifth, or when head and tail are already the whole
-transcript.
+the trigger, so a run does not fold every turn. A fold the prompt does not need
+is skipped when it reclaims less than a fifth. Nothing switches compaction off
+for the rest of a run: a fold costs no request to measure, so every turn past
+the trigger measures it again.
 
-The compactor refuses while `IterationProgressGuard` sees repeats, because a
+The compactor waits while `IterationProgressGuard` sees repeats, because a
 rewrite of history under a model that goes in circles removes the context that
-would let it notice. A drop is safe here specifically because `ActionLoopGuard`
-and the action history live in the context map and stay out of the transcript.
+would let it notice. It waits only while the prompt fits; a prompt over the
+budget is folded regardless. A drop is safe here specifically because
+`ActionLoopGuard` and the action history live in the context map and stay out
+of the transcript.
+
+`PromptSize` measures every limit in the configured model's own tokens.
+`TokenCalibration` keeps each model's characters per token, set by `AIManager`
+from the latest attempt's reported input tokens. A request with a picture sets
+nothing, because the picture's tokens have no characters. The ratio never
+exceeds the standard four, so a coarse tokenizer is not undercounted while no
+count is known.
+
+`LLMErrorMapper` maps a 4xx that names the context length, or any 413, to
+`LLMContextOverflowException`, with the provider's token count when the body
+gives one. A count too large to read counts as none. `AIManager` lowers the
+model's ratio from that count. Each loop then makes its prompt smaller and asks
+again:
+
+- The chat loop calls `TranscriptCompactor.fitAfterRefusal` once. A second
+  refusal ends the run.
+- The classic agent calls `AgentHistoryFit.fit` once. The same method runs
+  before every step on the chat loop's trigger and target, and it leaves out the
+  oldest outputs.
+- `ModelReasoner` throws `PromptTooLong`. `Harness` gives up older tool answers
+  after every refusal, until no answer is left to give up.
+
+`PromptBuilder` and `ResumedContext` also measure with `PromptSize`.
+
+`Harness` compacts on the size of the next request: the latest prompt as its
+reasoner counted it, plus what was said since at the same tokens per character.
+`Completion.promptTokens` and `Reply.promptTokens` carry one attempt's count,
+because `tokensIn` is billed once per attempt. `Harness` checks before every
+request, because one round can read many times without acting. It compacts to
+half of `HarnessLimits.compactionTokens`, which `HarnessRun` sets to
+`TranscriptCompactor.triggerTokens()`. It ignores `compaction.enabled` and
+`compaction.target`. A compaction cuts the earlier statements of where the run
+stands to a stub, because the new one replaces them.
 
 The chat loop builds one string that embeds a command's output and another that
 embeds it again. An append of both puts every result in the prompt twice.
@@ -516,7 +552,8 @@ and a trailing-window throughput rate. It hooks into `AIManager.complete`,
 because every caller passes through that single point. Backends publish whatever
 usage the provider reported through `ReportedUsage`, and CadetCoder uses those
 counts verbatim. `TokenEstimator`, at roughly four characters per token, is the
-fallback for providers that report none. A leading `~` marks an estimate, so
+fallback for providers that report none. Limits use `PromptSize` instead; see
+compaction above. A leading `~` marks an estimate, so
 nobody mistakes it for a billed figure.
 
 `TokenUsage` holds the per-provider arithmetic, which genuinely differs:

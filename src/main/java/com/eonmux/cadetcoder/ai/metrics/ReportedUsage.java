@@ -37,6 +37,9 @@ public final class ReportedUsage {
 
     private static final ThreadLocal<TokenUsage> LAST = new ThreadLocal<>();
 
+    /** What the latest attempt alone reported, for measuring the prompt it sent. */
+    private static final ThreadLocal<TokenUsage> LATEST_ATTEMPT = new ThreadLocal<>();
+
     private ReportedUsage() {
     }
 
@@ -53,6 +56,20 @@ public final class ReportedUsage {
         }
         TokenUsage earlier = LAST.get();
         LAST.set(earlier == null ? usage : earlier.plus(usage));
+        LATEST_ATTEMPT.set(usage);
+    }
+
+    /**
+     * What the latest attempt at the request reported, without the attempts before it.
+     *
+     * <p>Every attempt at one request sends the same prompt, so the input count of one attempt is
+     * the prompt's size in the model's tokens. The sum over attempts is what was billed, and it
+     * counts the prompt once per attempt.</p>
+     *
+     * @return the latest attempt's usage, or empty when no attempt reported any
+     */
+    public static Optional<TokenUsage> latestAttempt() {
+        return Optional.ofNullable(LATEST_ATTEMPT.get());
     }
 
     /**
@@ -63,6 +80,7 @@ public final class ReportedUsage {
     public static Optional<TokenUsage> take() {
         TokenUsage usage = LAST.get();
         LAST.remove();
+        LATEST_ATTEMPT.remove();
         return Optional.ofNullable(usage);
     }
 
@@ -75,5 +93,6 @@ public final class ReportedUsage {
      */
     public static void clear() {
         LAST.remove();
+        LATEST_ATTEMPT.remove();
     }
 }

@@ -118,15 +118,98 @@ public class TranscriptCompactorTest {
                 .contains("omitted to stay within the model's context window");
     }
 
+    /** A transcript past the trigger that still fits the budget: twenty entries, 90% of it. */
+    private static List<String> transcriptPastTheTriggerThatFits() {
+        int          perEntry   = (int) (TranscriptCompactor.effectiveBudgetTokens() * 0.9 / 20);
+        List<String> transcript = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            transcript.add(textOfAbout(perEntry));
+        }
+        return transcript;
+    }
+
     @Test
-    public void aRunGoingInCirclesIsNotCompacted() {
-        List<String> transcript = longTranscript(40);
+    public void aRunGoingInCirclesIsNotCompactedWhileItsPromptFits() {
+        List<String> transcript = transcriptPastTheTriggerThatFits();
         List<String> before     = new ArrayList<>(transcript);
 
         // Rewriting history under a model that is already repeating itself removes the context that
         // would let it notice it is repeating.
         assertThat(new TranscriptCompactor().compactIfNeeded(transcript, "system", false)).isNull();
         assertThat(transcript).isEqualTo(before);
+    }
+
+    /**
+     * A prompt over the window is refused, and the refusal ends the run.
+     *
+     * <p><b>The defect</b>: a run whose model repeated itself was never folded, however large its
+     * prompt grew, so the next request went out over the window.</p>
+     */
+    @Test
+    public void aRunGoingInCirclesIsStillFoldedWhenItsPromptWouldNotFit() {
+        List<String> transcript = longTranscript(40);
+
+        assertThat(new TranscriptCompactor().compactIfNeeded(transcript, "system", false))
+                .isNotNull()
+                .contains("folded");
+    }
+
+    /**
+     * The prompt is measured in the model's own tokens once its provider has counted one.
+     *
+     * <p><b>The defect</b>: the prompt was measured at four characters per token whatever the
+     * model. A tokenizer that splits text finer reaches the window first, so the trigger was never
+     * reached and the provider refused the request.</p>
+     */
+    @Test
+    public void thePromptIsMeasuredWithTheModelsOwnCount() {
+        List<String> transcript = transcriptPastTheTriggerThatFits();
+        transcript.replaceAll(entry -> entry.substring(0, entry.length() * 2 / 3));
+        assertThat(new TranscriptCompactor().compactIfNeeded(transcript, "system", true))
+                .as("at four characters per token it is under the trigger")
+                .isNull();
+
+        com.eonmux.cadetcoder.ai.metrics.TokenCalibration.observe(
+                com.eonmux.cadetcoder.ai.PromptSize.configuredModel(), 20_000, 10_000);
+        try {
+            assertThat(new TranscriptCompactor().compactIfNeeded(transcript, "system", true))
+                    .as("at the two the provider counted it is over the window")
+                    .isNotNull()
+                    .contains("folded");
+        } finally {
+            com.eonmux.cadetcoder.ai.metrics.TokenCalibration.clear();
+        }
+    }
+
+    /** The provider refused the prompt as too long, whatever the estimate made of it. */
+    @Test
+    public void aRefusalForLengthFoldsAPromptTheEstimateThoughtFits() {
+        List<String> transcript = transcriptPastTheTriggerThatFits();
+        int          before     = TranscriptCompactor.estimateTranscript(transcript);
+
+        String summary = new TranscriptCompactor().fitAfterRefusal(transcript, "system");
+
+        assertThat(summary).isNotNull().contains("folded");
+        assertThat(TranscriptCompactor.estimateTranscript(transcript)).isLessThan(before);
+    }
+
+    @Test
+    public void aRefusalWithNothingToFoldChangesNothing() {
+        settings.setKeepHeadEntries(6);
+        settings.setKeepTailEntries(9);
+        List<String> transcript = longTranscript(15);
+        List<String> before     = new ArrayList<>(transcript);
+
+        assertThat(new TranscriptCompactor().fitAfterRefusal(transcript, "system")).isNull();
+        assertThat(transcript).isEqualTo(before);
+    }
+
+    @Test
+    public void aRefusalIsNotFoldedWhenCompactionIsTurnedOff() {
+        settings.setEnabled(false);
+        List<String> transcript = longTranscript(40);
+
+        assertThat(new TranscriptCompactor().fitAfterRefusal(transcript, "system")).isNull();
     }
 
     @Test
@@ -137,17 +220,30 @@ public class TranscriptCompactorTest {
         assertThat(new TranscriptCompactor().compactIfNeeded(transcript, "system", true)).isNull();
     }
 
+    /**
+     * A run that had nothing to fold is folded once it has grown a middle.
+     *
+     * <p><b>The defect</b>: a turn with nothing to fold switched compaction off for the rest of the
+     * run. A run whose first fifteen entries were large enough to reach the trigger then grew with
+     * nothing left to fold it, until the provider refused the request.</p>
+     */
     @Test
-    public void aTranscriptWithNoMiddleToFoldLatchesOffInsteadOfRetryingForever() {
+    public void aRunThatHadNothingToFoldIsFoldedOnceItHasGrown() {
         settings.setKeepHeadEntries(6);
         settings.setKeepTailEntries(9);
         // Fifteen entries is exactly head + tail: there is no middle, so folding cannot reclaim
-        // anything and repeating it every turn would rewrite the prefix for no gain.
-        List<String> transcript = longTranscript(15);
-
-        TranscriptCompactor compactor = new TranscriptCompactor();
+        // anything, and the transcript is left as it is.
+        List<String>        transcript = longTranscript(15);
+        List<String>        before     = new ArrayList<>(transcript);
+        TranscriptCompactor compactor  = new TranscriptCompactor();
         assertThat(compactor.compactIfNeeded(transcript, "system", true)).isNull();
-        assertThat(compactor.isLatchedOff()).isTrue();
+        assertThat(transcript).isEqualTo(before);
+
+        transcript.addAll(longTranscript(25));
+
+        assertThat(compactor.compactIfNeeded(transcript, "system", true))
+                .isNotNull()
+                .contains("folded");
     }
 
     /**
@@ -188,9 +284,8 @@ public class TranscriptCompactorTest {
     /**
      * A saving too small to be worth repeating is still the difference between a request and a 400.
      *
-     * <p><b>The defect</b>: a fold reclaiming less than {@code MINIMUM_RECLAIM} was thrown away AND
-     * compaction was latched off for the rest of the run, so the prompt went out exactly as it was
-     * -- over the window, with nothing said and nothing left that would ever try again.</p>
+     * <p><b>The defect</b>: a fold reclaiming less than {@code MINIMUM_RECLAIM} was thrown away,
+     * so the prompt went out exactly as it was -- over the window, with nothing said.</p>
      */
     @Test
     public void afoldThatBarelyHelpsIsStillAppliedWhenThePromptDoesNotOtherwiseFit() {
@@ -217,9 +312,6 @@ public class TranscriptCompactorTest {
                 .as("and the prompt that still does not fit is described as one that does not fit")
                 .isNotNull()
                 .contains("tokens of prompt against a limit of");
-        assertThat(compactor.isLatchedOff())
-                .as("there is nothing left to fold, so the run stops trying")
-                .isTrue();
     }
 
     /**
@@ -359,5 +451,14 @@ public class TranscriptCompactorTest {
         } finally {
             ConfigManager.getInstance().getConfig().getAi().setMaxTokens(original);
         }
+    }
+
+    /** The harness compacts at the same size, so both loops agree on when a prompt is too big. */
+    @Test
+    public void theTriggerIsItsShareOfTheBudget() {
+        settings.setTrigger(0.5);
+
+        assertThat(TranscriptCompactor.triggerTokens())
+                .isEqualTo((long) (0.5 * TranscriptCompactor.effectiveBudgetTokens()));
     }
 }

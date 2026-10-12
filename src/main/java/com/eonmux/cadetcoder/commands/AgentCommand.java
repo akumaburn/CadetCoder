@@ -4,6 +4,7 @@ import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.AIManager;
 import com.eonmux.cadetcoder.ai.PromptData;
+import com.eonmux.cadetcoder.ai.SystemPromptProvider;
 import com.eonmux.cadetcoder.ai.UberMode;
 import com.eonmux.cadetcoder.harness.budget.BudgetLimits;
 import com.eonmux.cadetcoder.harness.cadet.HarnessRun;
@@ -14,6 +15,7 @@ import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.context.ContextEngine;
 import com.eonmux.cadetcoder.jobs.BackgroundJob;
 import com.eonmux.cadetcoder.jobs.JobNotice;
+import com.eonmux.cadetcoder.net.LLMContextOverflowException;
 import com.eonmux.cadetcoder.resume.ResumeScope;
 import com.eonmux.cadetcoder.session.ResumePoint;
 import com.eonmux.cadetcoder.timers.TimerNotice;
@@ -335,7 +337,8 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
 
         String systemPrompt = AgentPrompts.system(state, timeBudgetSec,
                                                   message -> logWarning("buildSystemPrompt", message));
-        String userPrompt   = AgentPrompts.user(state, context, getContextEngine());
+        String userPrompt   = fitted(state, context, systemPrompt,
+                                     AgentPrompts.user(state, context, getContextEngine()), false);
 
         if ((boolean) context.get("verboseMode")) {
             OutputFormatter.printInfo("Agent reasoning...");
@@ -351,7 +354,7 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
             return interrupted(context);
         }
 
-        String reply = askTheModel(systemPrompt, userPrompt);
+        String reply = askFitting(state, context, systemPrompt, userPrompt);
         if (reply == null) {
             TimerNotice.undelivered();
             JobNotice.undelivered();
@@ -557,6 +560,53 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
     }
 
     /**
+     * The user prompt, built again with older outputs left out when it does not fit the window.
+     *
+     * @param refused whether the provider refused the prompt as too long
+     * @return the prompt to send
+     */
+    private String fitted(AgentState state, Map<String, Object> context, String systemPrompt,
+                          String userPrompt, boolean refused) {
+        String note = AgentHistoryFit.fit(state, SystemPromptProvider.compose(systemPrompt),
+                                          userPrompt, refused);
+        if (note == null) {
+            return userPrompt;
+        }
+        OutputFormatter.printInfo(refused
+                                  ? "The prompt was too long for the model. Context compacted: "
+                                    + note + ". Asking again."
+                                  : "Context compacted: " + note + ".");
+        // Building the prompt withdrew any timer firing and any job ending that had come due, and
+        // the prompt built again has to carry them.
+        TimerNotice.undelivered();
+        JobNotice.undelivered();
+        return AgentPrompts.user(state, context, getContextEngine());
+    }
+
+    /**
+     * The model's reply to this step, asked once more with older outputs left out when the
+     * provider refuses the prompt as too long.
+     *
+     * @return the reply, or {@code null} when the request failed (already reported)
+     */
+    private String askFitting(AgentState state, Map<String, Object> context, String systemPrompt,
+                              String userPrompt) {
+        try {
+            return reply(systemPrompt, userPrompt);
+        } catch (LLMContextOverflowException tooLong) {
+            String smaller = fitted(state, context, systemPrompt, userPrompt, true);
+            if (smaller.equals(userPrompt)) {
+                OutputFormatter.printError("AI response failed: " + tooLong.getMessage());
+                return null;
+            }
+            return askTheModel(systemPrompt, smaller);
+        } catch (Exception e) {
+            OutputFormatter.printError("AI response failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    /**
      * The model's reply to this step.
      *
      * @param systemPrompt what the agent is
@@ -565,18 +615,22 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
      */
     private String askTheModel(String systemPrompt, String userPrompt) {
         try {
-            logAIStart("agent-ai", userPrompt, new HashMap<>());
-            long started = System.currentTimeMillis();
-
-            String reply = getAIManager().complete(new PromptData(systemPrompt, userPrompt),
-                                                   new HashMap<>());
-
-            logAIComplete("agent-ai", reply, System.currentTimeMillis() - started);
-            return reply;
+            return reply(systemPrompt, userPrompt);
         } catch (Exception e) {
             OutputFormatter.printError("AI response failed: " + e.getMessage());
             return null;
         }
+    }
+
+    private String reply(String systemPrompt, String userPrompt) {
+        logAIStart("agent-ai", userPrompt, new HashMap<>());
+        long started = System.currentTimeMillis();
+
+        String reply = getAIManager().complete(new PromptData(systemPrompt, userPrompt),
+                                               new HashMap<>());
+
+        logAIComplete("agent-ai", reply, System.currentTimeMillis() - started);
+        return reply;
     }
 
     /**

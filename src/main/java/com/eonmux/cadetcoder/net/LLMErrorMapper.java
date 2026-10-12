@@ -141,6 +141,11 @@ public final class LLMErrorMapper {
                                                                       excerpt);
         }
         if (statusCode >= 400 && statusCode <= 499) {
+            LLMContextOverflowException tooLong = LLMContextOverflowException.readFrom(
+                    provider, model, endpoint, statusCode, body, excerpt);
+            if (tooLong != null) {
+                return tooLong;
+            }
             return new LLMBadRequestException(provider, model, endpoint, statusCode, excerpt);
         }
         return new LLMException(LLMException.Kind.UNKNOWN,

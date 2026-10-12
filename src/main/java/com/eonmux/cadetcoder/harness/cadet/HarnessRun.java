@@ -2,6 +2,7 @@ package com.eonmux.cadetcoder.harness.cadet;
 
 import com.eonmux.cadetcoder.CommandRegistry;
 import com.eonmux.cadetcoder.commands.QueuedMessages;
+import com.eonmux.cadetcoder.commands.TranscriptCompactor;
 import com.eonmux.cadetcoder.harness.budget.Budget;
 import com.eonmux.cadetcoder.harness.commit.CommitPolicy;
 import com.eonmux.cadetcoder.harness.env.Environment;
@@ -102,6 +103,18 @@ public final class HarnessRun {
     }
 
     /**
+     * The driver's limits, with compaction at the size the chat loop's transcript is folded at.
+     *
+     * <p>Taken from the configured model's window. A stronger reasoner a run escalates to is
+     * reached through the same provider, and its window is not looked up apart.</p>
+     *
+     * @return the limits
+     */
+    static HarnessLimits limits() {
+        return HarnessLimits.standard().withCompactionTokens(TranscriptCompactor.triggerTokens());
+    }
+
+    /**
      * Runs one task to whatever end it reaches.
      *
      * @param request what was asked for
@@ -123,7 +136,7 @@ public final class HarnessRun {
                                                CommitPolicy.standard());
         RunResult result;
         try {
-            result = new Harness(session, reasoners, HarnessLimits.standard(), watch, stop,
+            result = new Harness(session, reasoners, limits(), watch, stop,
                                  new CadetSignals(request.task(), conversation))
                     .run();
         } catch (RuntimeException failure) {

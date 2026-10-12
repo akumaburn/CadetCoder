@@ -108,10 +108,9 @@ public class AgentCommandTest {
             aiInstance.setAccessible(true);
             aiInstance.set(null, null);
 
-            // Reset ContextEngine
-            java.lang.reflect.Field contextInstance = ContextEngine.class.getDeclaredField("instance");
-            contextInstance.setAccessible(true);
-            contextInstance.set(null, null);
+            // Closed, not dropped: an engine left open keeps its index, and the next one cannot
+            // open it.
+            ContextEngine.resetInstance();
 
             // Reset ConfigManager
             java.lang.reflect.Field configInstance = ConfigManager.class.getDeclaredField("instance");

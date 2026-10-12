@@ -7,6 +7,7 @@ import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.SystemPromptProvider;
 import com.eonmux.cadetcoder.ai.metrics.RequestMetricsRecorder;
 import com.eonmux.cadetcoder.logging.DebugLogger;
+import com.eonmux.cadetcoder.net.LLMContextOverflowException;
 import com.eonmux.cadetcoder.net.LLMException;
 import com.eonmux.cadetcoder.session.ResumedContext;
 import com.eonmux.cadetcoder.jobs.JobNotice;
@@ -529,17 +530,38 @@ public class IterativeExecutor {
 
         // Fold the transcript if this prompt would not otherwise fit. Done after the turn's entries
         // are appended and BEFORE the prompt is rendered, so what is measured is what would be sent
-        // -- and so the render below is the only one. Refused while the guard is seeing repeats:
-        // rewriting history under a model that is already going in circles removes the context that
-        // would let it notice.
-        String folded = compactor.compactIfNeeded(transcript,
-                                                  SystemPromptProvider.compose(systemPrompt),
-                                                  guard.consecutiveRepeats() == 0);
+        // -- and so the render below is the only one. Refused while the guard is seeing repeats,
+        // unless the prompt would not fit: rewriting history under a model that is already going in
+        // circles removes the context that would let it notice.
+        String composed = SystemPromptProvider.compose(systemPrompt);
+        String folded   = compactor.compactIfNeeded(transcript, composed,
+                                                    guard.consecutiveRepeats() == 0);
         if (folded != null) {
             OutputFormatter.printInfo("Context compacted: " + folded + ".");
         }
+        try {
+            return send(systemPrompt, nextPrompt, transcript, guard);
+        } catch (LLMContextOverflowException tooLong) {
+            // The provider's count decides, and it can exceed the estimate. One fold on its word
+            // and one more request; a second refusal ends the run as any other does.
+            String refit = compactor.fitAfterRefusal(transcript, composed);
+            if (refit == null) {
+                throw tooLong;
+            }
+            OutputFormatter.printInfo("The prompt was too long for the model. Context compacted: "
+                                      + refit + ". Asking again.");
+            return send(systemPrompt, nextPrompt, transcript, guard);
+        }
+    }
 
-        // Rendered once, after any compaction. The retry nudge and any timer that has come due are
+    /**
+     * Renders the turn and sends it.
+     *
+     * @return the model's reply
+     */
+    private String send(String systemPrompt, String nextPrompt, List<String> transcript,
+                        IterationProgressGuard guard) {
+        // Rendered after any compaction. The retry nudge and any timer that has come due are
         // appended to the rendered string and deliberately never enter the transcript, so they have
         // to be added last -- a re-render after them would silently drop them.
         String fullPrompt = turnPrompt(buildPromptWithHistory(nextPrompt, transcript),

@@ -4,11 +4,13 @@ import com.eonmux.cadetcoder.ai.AIClient;
 import com.eonmux.cadetcoder.ai.AIManager;
 import com.eonmux.cadetcoder.ai.Completion;
 import com.eonmux.cadetcoder.ai.PromptData;
+import com.eonmux.cadetcoder.harness.loop.PromptTooLong;
 import com.eonmux.cadetcoder.harness.loop.Reasoner;
 import com.eonmux.cadetcoder.harness.loop.Reply;
 import com.eonmux.cadetcoder.harness.loop.Transcript;
 import com.eonmux.cadetcoder.harness.loop.Turn;
 import com.eonmux.cadetcoder.harness.loop.TurnKind;
+import com.eonmux.cadetcoder.net.LLMContextOverflowException;
 
 /**
  * The harness's thinking, done by whichever model CadetCoder is connected to.
@@ -104,9 +106,13 @@ public final class ModelReasoner implements Reasoner {
         if (transcript == null || transcript.size() == 0) {
             throw new IllegalArgumentException("there has to be something for the model to answer");
         }
-        Completion said =
-                models.completeMeasured(model, new PromptData(system, render(transcript)));
-        return new Reply(said.text(), said.tokensIn(), said.tokensOut());
+        Completion said;
+        try {
+            said = models.completeMeasured(model, new PromptData(system, render(transcript)));
+        } catch (LLMContextOverflowException tooLong) {
+            throw new PromptTooLong(tooLong, tooLong.promptTokens());
+        }
+        return new Reply(said.text(), said.tokensIn(), said.tokensOut(), said.promptTokens());
     }
 
     /**

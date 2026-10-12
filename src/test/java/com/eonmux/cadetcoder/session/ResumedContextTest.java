@@ -18,6 +18,25 @@ public class ResumedContextTest {
         return history;
     }
 
+    /** A resumed history counts against the budget in the model's own tokens. */
+    @Test
+    public void whatIsRestoredIsMeasuredInTheModelsOwnTokens() {
+        List<String> history = history(10, 2_000);
+        int          budget  = 40_000;
+        assertThat(String.join("\n", ResumedContext.seed(history, budget))).contains("turn 0");
+
+        com.eonmux.cadetcoder.ai.metrics.TokenCalibration.observe(
+                com.eonmux.cadetcoder.ai.PromptSize.configuredModel(), 20_000, 20_000);
+        try {
+            assertThat(String.join("\n", ResumedContext.seed(history, budget)))
+                    .as("at a character a token, the oldest turns no longer fit")
+                    .doesNotContain("turn 0 ")
+                    .contains("turn 9");
+        } finally {
+            com.eonmux.cadetcoder.ai.metrics.TokenCalibration.clear();
+        }
+    }
+
     @Test
     public void afreshSessionRestoresNothingForAnyCaller() {
         // The gate every caller shares. Without it, an unrelated command would drag the previous

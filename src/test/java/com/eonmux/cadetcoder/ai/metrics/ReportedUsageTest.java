@@ -51,6 +51,19 @@ class ReportedUsageTest {
         assertThat(ReportedUsage.take()).contains(new TokenUsage(200, 30, 305));
     }
 
+    /** Every attempt at a request sends the same prompt, so one attempt's count measures it. */
+    @Test
+    @DisplayName("The latest attempt's figures are kept apart from the request's total")
+    void theLatestAttemptIsKeptApart() {
+        ReportedUsage.report(new TokenUsage(100, 10, 5));
+        ReportedUsage.report(new TokenUsage(100, 20, 300));
+        ReportedUsage.report(null);
+
+        assertThat(ReportedUsage.latestAttempt()).contains(new TokenUsage(100, 20, 300));
+        assertThat(ReportedUsage.take()).contains(new TokenUsage(200, 30, 305));
+        assertThat(ReportedUsage.latestAttempt()).as("taking ends the request").isEmpty();
+    }
+
     @Test
     @DisplayName("Clearing starts a new request, so nothing carries across one")
     void clearingStartsAfreshRequest() {

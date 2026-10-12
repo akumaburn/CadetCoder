@@ -16,6 +16,10 @@ package com.eonmux.cadetcoder.harness.loop;
  * <p>A backend that is rate limited, disconnected or misconfigured is not a fact about the world the
  * agent is exploring, and turning it into one would write nonsense into the ledger. Retrying belongs
  * to whatever knows how to retry; anything that reaches the driver ends the run loudly.</p>
+ *
+ * <p>One failure is the driver's to answer: a request refused as longer than the model's context
+ * window, which a reasoner reports as {@link PromptTooLong}. The driver gives up older tool answers
+ * and asks again, which nothing below it can do.</p>
  */
 public interface Reasoner {
 
@@ -28,6 +32,7 @@ public interface Reasoner {
      * @param system     the standing instructions, which do not change within a run
      * @param transcript everything said so far, oldest first
      * @return what it said and what that cost
+     * @throws PromptTooLong when the request is refused as longer than the model's context window
      */
     Reply think(String system, Transcript transcript);
 }

@@ -1,6 +1,5 @@
 package com.eonmux.cadetcoder.ai;
 
-import com.eonmux.cadetcoder.ai.metrics.TokenEstimator;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.context.ProjectContext;
@@ -364,7 +363,7 @@ public class PromptBuilder implements Comparable<PromptBuilder> {
         if (context == null || context.isEmpty()) {
             return "";
         }
-        int allowance = (int) (TokenEstimator.charsFor(tokenBudget - RESERVED_TOKENS)
+        int allowance = (int) (PromptSize.charsFor(tokenBudget - RESERVED_TOKENS)
                                * PROJECT_CONTEXT_BUDGET_SHARE);
         if (allowance <= 0 || context.length() <= allowance) {
             return context;
@@ -376,13 +375,13 @@ public class PromptBuilder implements Comparable<PromptBuilder> {
     private String truncateToTokenBudget(String prompt) {
         int availableTokens = tokenBudget - RESERVED_TOKENS;
 
-        if (TokenEstimator.estimate(prompt) <= availableTokens) {
+        if (PromptSize.tokens(prompt) <= availableTokens) {
             return prompt;
         }
 
         // An exhausted budget (tokenBudget < RESERVED_TOKENS) yields a zero-length allowance, so
         // the result is the marker alone rather than a StringIndexOutOfBoundsException.
-        int targetLength = TokenEstimator.charsFor(availableTokens);
+        int targetLength = PromptSize.charsFor(availableTokens);
         if (targetLength < prompt.length()) {
             return prompt.substring(0, targetLength) + "\n\n[Content truncated to fit token budget]";
         }

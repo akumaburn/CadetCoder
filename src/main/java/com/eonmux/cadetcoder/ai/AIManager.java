@@ -4,11 +4,13 @@ import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.metrics.RequestMetrics;
 import com.eonmux.cadetcoder.ai.metrics.ReportedUsage;
 import com.eonmux.cadetcoder.ai.metrics.RequestMetricsRecorder;
+import com.eonmux.cadetcoder.ai.metrics.TokenCalibration;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.error.ErrorHandler;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.eonmux.cadetcoder.ui.CollapsedOutput;
+import com.eonmux.cadetcoder.net.LLMContextOverflowException;
 import com.eonmux.cadetcoder.net.LLMEmptyResponseException;
 import com.eonmux.cadetcoder.net.LLMException;
 import com.eonmux.cadetcoder.session.SessionManager;
@@ -304,6 +306,8 @@ public class AIManager {
                     // Provider-reported counts win over the estimate whenever the backend
                     // parsed a usage block; see TokenUsage for why the arithmetic differs per
                     // provider, and RequestMetrics#isEstimated for how the two are told apart.
+                    learnTheTokenRatio(chosen, request);
+                    OptionalLong promptTokens = promptTokensOfOneAttempt();
                     final String completion = response;
                     RequestMetrics measured =
                             ReportedUsage.take()
@@ -318,7 +322,8 @@ public class AIManager {
                         // about them from here on.
                         PromptAttachments.delivered();
                     }
-                    return Completion.of(response, measured);
+                    return Completion.of(response, measured,
+                                         promptTokens.orElse(measured.inputTokens()));
                 } else {
                     metrics.abandon(inFlight);
                     if (attempt < maxAttempts) {
@@ -338,6 +343,9 @@ public class AIManager {
                 // terminal, and ErrorHandler's generic "recovery" is skipped.
                 DebugLogger.getInstance().error("AIManager", "AI completion failed: " + le.getMessage(), le);
                 metrics.abandon(inFlight);
+                if (le instanceof LLMContextOverflowException tooLong) {
+                    learnFromTheRefusal(chosen, request, tooLong);
+                }
                 throw le;
             } catch (Exception e) {
                 lastException = e;
@@ -378,6 +386,56 @@ public class AIManager {
                                    client, null, null, 0, null, null, lastException);
         }
         throw new LLMEmptyResponseException(client, null, maxAttempts);
+    }
+
+    /**
+     * Sets the model's ratio of characters to tokens from what its provider counted.
+     *
+     * <p>Read from the latest attempt alone: each attempt sends the same prompt, and the request's
+     * total counts it once per attempt. A request that carries a picture sets nothing, because the
+     * picture's tokens have no characters in the prompt.</p>
+     *
+     * @param chosen  the model the caller named, or {@code null} for the configured one
+     * @param request what was sent
+     */
+    /**
+     * The prompt's size as the provider counted it on the latest attempt; read before
+     * {@link ReportedUsage#take()} clears it.
+     *
+     * @return the count, or empty when the provider reported none, and the estimate stands in
+     */
+    private static OptionalLong promptTokensOfOneAttempt() {
+        return ReportedUsage.latestAttempt().map(usage -> OptionalLong.of(usage.inputTokens()))
+                            .orElse(OptionalLong.empty());
+    }
+
+    private static void learnTheTokenRatio(AIClient chosen, PromptData request) {
+        if (request.hasImages()) {
+            return;
+        }
+        ReportedUsage.latestAttempt().ifPresent(usage -> TokenCalibration.observe(
+                PromptSize.modelOf(chosen), charactersSent(request), usage.inputTokens()));
+    }
+
+    /**
+     * Lowers the model's ratio of characters to tokens to what a refusal for length implies.
+     *
+     * @param chosen  the model the caller named, or {@code null} for the configured one
+     * @param request what was refused
+     * @param tooLong the refusal, with the fewest tokens the provider counted
+     */
+    private static void learnFromTheRefusal(AIClient chosen, PromptData request,
+                                            LLMContextOverflowException tooLong) {
+        if (!request.hasImages()) {
+            TokenCalibration.observeAtLeast(PromptSize.modelOf(chosen), charactersSent(request),
+                                            tooLong.promptTokens());
+        }
+    }
+
+    private static long charactersSent(PromptData request) {
+        String system = request.getSystemPrompt();
+        String user   = request.getUserPrompt();
+        return (system == null ? 0L : system.length()) + (user == null ? 0L : user.length());
     }
 
     /**

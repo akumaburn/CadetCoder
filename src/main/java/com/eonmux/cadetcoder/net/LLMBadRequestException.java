@@ -18,12 +18,12 @@ public class LLMBadRequestException extends LLMException {
               provider, model, endpoint, statusCode, bodyExcerpt, null, null);
     }
 
-    private LLMBadRequestException(String message,
-                                   String provider,
-                                   String model,
-                                   String endpoint,
-                                   int statusCode,
-                                   String bodyExcerpt) {
+    LLMBadRequestException(String message,
+                           String provider,
+                           String model,
+                           String endpoint,
+                           int statusCode,
+                           String bodyExcerpt) {
         super(Kind.BAD_REQUEST, message, provider, model, endpoint, statusCode, bodyExcerpt,
               null, null);
     }

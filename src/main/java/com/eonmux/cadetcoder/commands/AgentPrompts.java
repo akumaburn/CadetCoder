@@ -25,6 +25,9 @@ import java.util.function.Consumer;
  */
 final class AgentPrompts {
 
+    /** What stands in place of an output left out to fit the model's context window. */
+    static final String LEFT_OUT = "[left out to fit the model's context window]";
+
     private AgentPrompts() {}
 
     /**
@@ -140,24 +143,45 @@ final class AgentPrompts {
                 next++;
             }
             if (i < actions.size()) {
-                appendAction(prompt, actions.get(i));
+                appendAction(prompt, actions.get(i), i < state.outputsLeftOut());
             }
         }
         prompt.append("\n");
     }
 
-    /** One action that ran, with its exit code and its output. */
-    private static void appendAction(StringBuilder prompt, AgentState.ActionResult entry) {
+    /**
+     * One action that ran, with its exit code and its output.
+     *
+     * @param leftOut whether its output is left out to fit the model's context window
+     */
+    private static void appendAction(StringBuilder prompt, AgentState.ActionResult entry,
+                                     boolean leftOut) {
         prompt.append("- ").append(entry.action.command).append(" ")
               .append(String.join(" ", entry.action.args))
               .append(" (exit code: ").append(entry.exitCode).append(")\n");
-        String out = entry.output;
-        if (out != null && !out.isBlank()) {
-            prompt.append("  Output:\n");
-            for (String line : truncateForPrompt(out).split("\n")) {
-                prompt.append("    ").append(line).append("\n");
-            }
+        String out = outputShown(entry);
+        if (out.isBlank()) {
+            return;
         }
+        if (leftOut) {
+            prompt.append("  Output: ").append(LEFT_OUT).append("\n");
+            return;
+        }
+        prompt.append("  Output:\n");
+        for (String line : out.split("\n")) {
+            prompt.append("    ").append(line).append("\n");
+        }
+    }
+
+    /**
+     * An action's output as the prompt shows it.
+     *
+     * @param entry the action that ran
+     * @return its output, bounded for the prompt; empty when it printed nothing
+     */
+    static String outputShown(AgentState.ActionResult entry) {
+        String out = entry.output;
+        return out == null || out.isBlank() ? "" : truncateForPrompt(out);
     }
 
     /** What the project's own index has to say about the task. */

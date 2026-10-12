@@ -77,6 +77,61 @@ public record Transcript(List<Turn> turns) {
         return new Transcript(kept);
     }
 
+    /**
+     * The transcript with its oldest tool answers given up until enough characters are saved.
+     *
+     * <p>Answers go oldest first, so the newest are given up only when the older ones are not
+     * enough. The newest {@code keepRecent} are never given up.</p>
+     *
+     * @param characters how many characters to save
+     * @param keepRecent how many of the most recent answers to leave exactly as they are
+     * @return the compacted transcript, which saves fewer when there is not enough to give up
+     */
+    public Transcript compactedBy(long characters, int keepRecent) {
+        int        squashUpTo = squashUpTo(keepRecent);
+        List<Turn> kept       = new ArrayList<>(turns.size());
+        int        seen       = 0;
+        long       saved      = 0;
+        for (Turn turn : turns) {
+            boolean answer = turn.kind() == TurnKind.ANSWER;
+            if (answer && seen++ < squashUpTo && saved < characters && worthSquashing(turn)) {
+                saved += turn.text().length() - SQUASHED.length();
+                kept.add(Turn.answer(SQUASHED));
+            } else {
+                kept.add(turn);
+            }
+        }
+        return new Transcript(kept);
+    }
+
+    /**
+     * The transcript with every harness turn that opens with {@code opening} cut to {@code stub}.
+     *
+     * <p>For a statement a later one replaces, such as where the run stood at an earlier
+     * compaction.</p>
+     *
+     * @param opening how the replaced turns begin
+     * @param stub    what is left in their place
+     * @return the shorter transcript
+     */
+    public Transcript superseding(String opening, String stub) {
+        List<Turn> kept = new ArrayList<>(turns.size());
+        for (Turn turn : turns) {
+            boolean replaced = turn.kind() == TurnKind.HARNESS && turn.text().startsWith(opening);
+            kept.add(replaced ? Turn.harness(stub) : turn);
+        }
+        return new Transcript(kept);
+    }
+
+    /** How many characters the turns hold, which is what a request carries of them. */
+    public long characters() {
+        long total = 0;
+        for (Turn turn : turns) {
+            total += turn.text().length();
+        }
+        return total;
+    }
+
     /** How many answers have already been given up. */
     public int squashed() {
         int given = 0;

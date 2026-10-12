@@ -119,6 +119,16 @@ class WhatTheModelIsAskedIsWhatTheRunHasSaidTest {
         assertThat(reply.tokensOut()).isEqualTo(56L);
     }
 
+    /** A retried request is billed twice and its prompt is still one prompt. */
+    @Test
+    void theSizeOfThePromptComesBackApartFromWhatItCost() {
+        Reply reply = reasonerAnswering(new Completion("go on then", 2_000L, 56L, false, 1_000L))
+                .think("the standing instructions", SAID);
+
+        assertThat(reply.tokensIn()).isEqualTo(2_000L);
+        assertThat(reply.promptTokens()).isEqualTo(1_000L);
+    }
+
     @Test
     void aBackendThatFailsEndsTheRunRatherThanAnsweringForIt() {
         AIManager models = mock(AIManager.class);
@@ -176,5 +186,31 @@ class WhatTheModelIsAskedIsWhatTheRunHasSaidTest {
             }
         }
         return "";
+    }
+
+    /** The driver answers this one failure itself, so it is told apart from every other. */
+    @Test
+    void aRefusalForLengthReachesTheDriverWithTheProvidersCount() {
+        LLMException tooLong = com.eonmux.cadetcoder.net.LLMErrorMapper.fromStatus(
+                "local", "qwen", null, 400,
+                "{\"error\":{\"message\":\"prompt is too long: 9000 tokens > 8192 maximum\"}}",
+                null);
+        AIManager models = mock(AIManager.class);
+        when(models.completeMeasured(ArgumentMatchers.<AIClient>any(), any(PromptData.class)))
+                .thenThrow(tooLong);
+
+        assertThatThrownBy(() -> new ModelReasoner("test-model", models).think("rules", SAID))
+                .isInstanceOfSatisfying(com.eonmux.cadetcoder.harness.loop.PromptTooLong.class,
+                        refused -> {
+                            assertThat(refused.refusal()).isSameAs(tooLong);
+                            assertThat(refused.promptTokens()).isEqualTo(9_000L);
+                        });
+    }
+
+    /** A run compacts at the size the chat loop folds at, taken from the model's window. */
+    @Test
+    void aRunCompactsWhereTheChatLoopDoes() {
+        assertThat(HarnessRun.limits().compactionTokens())
+                .isEqualTo(com.eonmux.cadetcoder.commands.TranscriptCompactor.triggerTokens());
     }
 }

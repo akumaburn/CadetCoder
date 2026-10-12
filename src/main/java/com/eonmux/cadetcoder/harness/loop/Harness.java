@@ -52,6 +52,14 @@ public final class Harness {
 
     private static final String BEGIN = "Begin. Where the world is, and where the run stands:";
 
+    /** How the statement of where the run stands opens, when a compaction makes one. */
+    private static final String COMPACTED = SPEAKING + "the transcript was compacted";
+
+    /** What is left of an earlier such statement once a later one replaces it. */
+    private static final String SUPERSEDED =
+            SPEAKING + "the transcript was compacted here; a later statement of where the run "
+            + "stands replaces the one that was here.";
+
     /** What a result says when the run was taken back rather than finished. */
     private static final String CALLED_OFF =
             "The run was called off before its next turn. The ledger, the models and the notes "
@@ -76,6 +84,10 @@ public final class Harness {
     private int        reasonerAt;
     private int        escalations;
     private boolean    saidStalled;
+
+    /** What the latest request carried, in tokens as its reasoner counted and in characters. */
+    private long       tokensSent;
+    private long       charactersSent;
 
     /**
      * Builds a run nobody can call off, for a caller with no operator behind it.
@@ -206,8 +218,22 @@ public final class Harness {
             // no further deliberation either. Asked only outside, the one allowance a run cannot
             // help spending is the one it would never be stopped by.
             session.budget().checkTime();
+            fitBeforeAsking();
             Reasoner reasoner = reasoner();
-            Reply    reply    = reasoner.think(system, transcript);
+            Reply    reply;
+            try {
+                charactersSent = charactersNow();
+                reply          = reasoner.think(system, transcript);
+            } catch (PromptTooLong tooLong) {
+                // The characters are the refused request's, so the tokens must be as well: the
+                // provider's count, or none, which leaves the next request unmeasured.
+                tokensSent = tooLong.promptTokens();
+                if (!giveUpAfterRefusal(tooLong)) {
+                    throw tooLong.refusal();
+                }
+                continue;
+            }
+            tokensSent = reply.promptTokens();
             signals.agentReplied();
             session.budget().chargeTokens(reply.tokensIn(), reply.tokensOut());
             transcript = transcript.plus(Turn.agent(reply.text()));
@@ -377,9 +403,6 @@ public final class Harness {
                 watch.stalled(plateau);
             }
         }
-        if (outgrown(budget.spend())) {
-            compact();
-        }
     }
 
     /**
@@ -415,33 +438,102 @@ public final class Harness {
                 + session.beliefs().render()));
     }
 
-    /** Whether what is being sent per round of thinking has outgrown what a request should carry. */
-    private boolean outgrown(Spend spend) {
-        return spend.tokensIn() > 0
-               && spend.tokensIn() / Math.max(1, spend.deliberations()) > limits.compactionTokens();
+    /**
+     * Gives up older tool answers when the next request would carry more than the limit.
+     *
+     * <h2>Why the latest request decides</h2>
+     *
+     * <p>The average tokens per round of thinking trails the latest request by half a run, and a
+     * round that reads without acting never reaches the point between rounds. Either would let a
+     * request pass the model's context window with no compaction at all. So the next request is
+     * measured, before every request: the latest one, as its reasoner counted it, and what was said
+     * since, at the same tokens per character.</p>
+     *
+     * <h2>Why it goes down to half the limit</h2>
+     *
+     * <p>Every compaction rewrites turns already sent, so the provider cannot serve them from its
+     * cache, and adds a statement of where the run stands. Going only just under the limit would
+     * compact again a request or two later. Half the limit leaves room for several requests.</p>
+     */
+    private void fitBeforeAsking() {
+        if (tokensSent <= 0 || charactersSent <= 0) {
+            return;
+        }
+        double perCharacter = (double) tokensSent / charactersSent;
+        long   next         = Math.round(charactersNow() * perCharacter);
+        long   limit        = limits.compactionTokens();
+        if (next > limit) {
+            compact(characters(next - limit / 2, perCharacter),
+                    characters(next - limit, perCharacter));
+        }
+    }
+
+    /**
+     * Gives up older tool answers after a refusal for length.
+     *
+     * <p>The refusal's count, when there is one, sets the tokens per character. A refused request
+     * is larger than the model's window, so giving up half of it brings it near half the window,
+     * where compaction aims. Half is given up at least, because the limit may be larger than the
+     * window, and because without a count half is the only measure the driver has.</p>
+     *
+     * @return whether anything was given up, so asking again can go differently
+     */
+    private boolean giveUpAfterRefusal(PromptTooLong tooLong) {
+        long refused = tooLong.promptTokens();
+        long half    = charactersSent / 2;
+        long needed  = half;
+        if (refused > 0 && charactersSent > 0) {
+            double perCharacter = (double) refused / charactersSent;
+            needed = Math.max(half, characters(refused - limits.compactionTokens() / 2,
+                                               perCharacter));
+        }
+        return compact(needed, needed);
     }
 
     /**
      * Gives up the older tool answers and says where the world is instead.
      *
+     * <p>The newest {@link HarnessLimits#keepRecentAnswers()} answers are kept while giving up the
+     * older ones reaches the target. When it does not, the newer ones go as well, down to the
+     * latest, until the request is back under the limit: the evidence the round is reasoning about
+     * is worth less than a request the model refuses.</p>
+     *
      * <h2>Why nothing is said when nothing was given up</h2>
      *
-     * <p>What is sent per round of thinking stays over the limit for as long as it takes the shorter
-     * requests to bring the average down, so this is reached on several deliberations in a row. Only
-     * the first of them has anything to squash; the rest would append a fresh status block for
-     * nothing, which is spending context to save context.</p>
+     * <p>A statement of where the run stands costs context, and appending one that gave nothing up
+     * would be spending context to save context.</p>
+     *
+     * @param toTarget characters to give up to reach the target
+     * @param toLimit  characters that have to go for the request to fit
+     * @return whether anything was given up
      */
-    private void compact() {
-        Transcript cut = transcript.compacted(limits.keepRecentAnswers());
-        if (cut.squashed() == transcript.squashed()) {
-            return;
-        }
-        transcript = cut.plus(Turn.harness(
-                SPEAKING + "the transcript was compacted; the answers it gave up are still in the "
+    private boolean compact(long toTarget, long toLimit) {
+        // The statement is part of what the next request carries, so its room is made too.
+        Turn       standing = Turn.harness(
+                COMPACTED + "; the answers it gave up are still in the "
                 + "ledger, the beliefs and the certificates, and can be asked for again. Where the "
                 + "run stands now:" + BREAK + toolbox.status() + BREAK + session.beliefs().render()
-                + BREAK + "notes:" + System.lineSeparator() + session.notes().tail(NOTES_CARRIED)));
+                + BREAK + "notes:" + System.lineSeparator() + session.notes().tail(NOTES_CARRIED));
+        long       room     = standing.text().length();
+        Transcript cut      = transcript.compactedBy(toTarget + room, limits.keepRecentAnswers());
+        if (transcript.characters() - cut.characters() < toLimit + room) {
+            cut = transcript.compactedBy(toLimit + room, 1);
+        }
+        if (cut.squashed() == transcript.squashed()) {
+            return false;
+        }
+        transcript = cut.superseding(COMPACTED, SUPERSEDED).plus(standing);
         watch.compacted(transcript.squashed());
+        return true;
+    }
+
+    /** What the next request carries in characters: the instructions and the transcript. */
+    private long charactersNow() {
+        return system.length() + transcript.characters();
+    }
+
+    private static long characters(long tokens, double perCharacter) {
+        return tokens <= 0 ? 0 : (long) Math.ceil(tokens / perCharacter);
     }
 
     private RunResult ended(RunStatus status, String text) {

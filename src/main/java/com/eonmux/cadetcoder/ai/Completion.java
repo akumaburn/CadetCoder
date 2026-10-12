@@ -21,29 +21,43 @@ import com.eonmux.cadetcoder.ai.metrics.RequestMetrics;
  * tell, rather than treating the tokeniser's approximation as though the provider had confirmed
  * it.</p>
  *
- * @param text      what the model said, never {@code null}
- * @param tokensIn  how many tokens went in, cached and new together
- * @param tokensOut how many came back
- * @param estimated whether these were counted here rather than reported by the provider
+ * <h2>Why the prompt's size is apart from what it cost</h2>
+ *
+ * <p>A request that is retried is billed once per attempt, and every attempt sends the same
+ * prompt. The bill is then a multiple of the prompt, and a caller that sizes its next prompt
+ * against the context window needs the prompt.</p>
+ *
+ * @param text         what the model said, never {@code null}
+ * @param tokensIn     how many tokens went in over every attempt, cached and new together
+ * @param tokensOut    how many came back
+ * @param estimated    whether these were counted here rather than reported by the provider
+ * @param promptTokens how many tokens the prompt is, as one attempt sent it
  */
-public record Completion(String text, long tokensIn, long tokensOut, boolean estimated) {
+public record Completion(String text, long tokensIn, long tokensOut, boolean estimated,
+                         long promptTokens) {
 
     public Completion {
-        if (tokensIn < 0 || tokensOut < 0) {
+        if (tokensIn < 0 || tokensOut < 0 || promptTokens < 0) {
             throw new IllegalArgumentException("a completion cannot have cost less than nothing");
         }
         text = text == null ? "" : text;
     }
 
+    /** A completion of one attempt, whose prompt is everything that went in. */
+    public Completion(String text, long tokensIn, long tokensOut, boolean estimated) {
+        this(text, tokensIn, tokensOut, estimated, tokensIn);
+    }
+
     /**
      * The completion for one request whose figures have already been measured.
      *
-     * @param text     what the model said
-     * @param measured the request's finished metrics
+     * @param text         what the model said
+     * @param measured     the request's finished metrics
+     * @param promptTokens the prompt's size, as one attempt sent it
      * @return the two halves of one answer, together
      */
-    public static Completion of(String text, RequestMetrics measured) {
+    public static Completion of(String text, RequestMetrics measured, long promptTokens) {
         return new Completion(text, measured.inputTokens(), measured.outputTokens(),
-                              measured.isEstimated());
+                              measured.isEstimated(), promptTokens);
     }
 }

@@ -1660,6 +1660,31 @@ exactly when the run is most valuable, it can fail, and it can succeed while it
 quietly loses the one fact that mattered. A drop is safe here because the loop
 guard's memory of what has already been tried lives outside the transcript.
 
+CadetCoder measures the prompt in the model's own tokens. Each response that
+reports usage gives the size of the prompt the provider accepted, and CadetCoder
+takes the model's characters per token from it. Before the first such count it
+takes four characters per token. A tokenizer that splits code and logs finer
+counts more tokens than that, and a fixed ratio would let a prompt reach the
+window before it reached the trigger.
+
+When a provider still refuses a prompt as longer than the context window, the
+chat loop folds its history on the provider's count and sends the turn once
+more. A second refusal ends the run, as any other refusal does.
+
+The agent's two loops also keep their prompts inside the window:
+
+- The classic loop (`--classic`) uses the same trigger and target. It leaves out
+  the output of its oldest actions. It keeps every action with its exit code,
+  and it keeps the latest output. After a refusal it leaves out more outputs
+  and asks once more.
+- The harness compacts when its next request passes the trigger, and it
+  compacts to half of the trigger. It gives up its oldest tool answers, which
+  the ledger and the beliefs still hold. It gives up the newest answers too,
+  down to the latest one, only when the request would not fit otherwise. After
+  each refusal it gives up more answers and asks again, until no answer is left
+  to give up. `cadet compact off` does not stop it, because a harness request
+  past the window ends the run.
+
 ```bash
 cadet compact status              # thresholds, and the budget they are measured against
 cadet compact off                 # or: on

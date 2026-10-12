@@ -111,4 +111,49 @@ public class WhatTheAgentIsShownSurvivesBeingCompactedTest {
 
         assertThat(transcript.compacted(10).squashed()).isZero();
     }
+
+    /** A compaction sized to the request gives up the oldest answers, only as many as needed. */
+    @Test
+    public void givingUpCharactersTakesTheOldestAnswersFirstAndStops() {
+        Transcript transcript = Transcript.empty()
+                .plus(Turn.answer(long_("oldest")))
+                .plus(Turn.answer(long_("older")))
+                .plus(Turn.answer(long_("newer")))
+                .plus(Turn.answer(long_("newest")));
+
+        Transcript kept = transcript.compactedBy(1, 0);
+
+        assertThat(kept.squashed()).isEqualTo(1);
+        assertThat(kept.turns().get(0).text()).isEqualTo(Transcript.SQUASHED);
+        assertThat(kept.turns().get(1).text()).isEqualTo(long_("older"));
+        assertThat(transcript.characters() - kept.characters()).isPositive();
+    }
+
+    @Test
+    public void givingUpCharactersNeverTouchesTheNewestItWasToldToKeep() {
+        Transcript transcript = Transcript.empty()
+                .plus(Turn.answer(long_("older")))
+                .plus(Turn.answer(long_("newest")));
+
+        Transcript kept = transcript.compactedBy(Long.MAX_VALUE, 1);
+
+        assertThat(kept.squashed()).isEqualTo(1);
+        assertThat(kept.turns().get(1).text()).isEqualTo(long_("newest"));
+    }
+
+    /** Where the run stood at an earlier compaction is out of date once a later one says it. */
+    @Test
+    public void aStatementALaterOneReplacesIsCutToAStub() {
+        Transcript transcript = Transcript.empty()
+                .plus(Turn.harness("[harness] compacted: where the run stood then"))
+                .plus(Turn.agent("[harness] compacted: words of the agent's own"))
+                .plus(Turn.harness("[harness] something else"));
+
+        Transcript kept = transcript.superseding("[harness] compacted", "[harness] replaced");
+
+        assertThat(kept.turns().get(0).text()).isEqualTo("[harness] replaced");
+        assertThat(kept.turns().get(1).text()).as("only the harness's own turns")
+                                              .startsWith("[harness] compacted");
+        assertThat(kept.turns().get(2).text()).isEqualTo("[harness] something else");
+    }
 }

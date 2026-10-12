@@ -17,8 +17,8 @@ package com.eonmux.cadetcoder.harness.loop;
  * ends when the tokens do with nothing to show. The bound turns that into an ending that says what
  * happened.</p>
  *
- * @param compactionTokens        the average tokens sent per deliberation above which the transcript
- *                                is cut down
+ * @param compactionTokens        the tokens one request may carry before the transcript is cut
+ *                                down, which it is to half of this
  * @param keepRecentAnswers       how many of the newest tool answers a compaction leaves alone
  * @param maxCallsPerDeliberation how many calls a round of thinking may make before it is told to act
  * @param maxSilentReplies        how many turns in a row may end without acting before the run stops
@@ -26,7 +26,7 @@ package com.eonmux.cadetcoder.harness.loop;
 public record HarnessLimits(long compactionTokens, int keepRecentAnswers,
                             int maxCallsPerDeliberation, int maxSilentReplies) {
 
-    /** Comfortably inside a large context, so compaction happens before a request is refused. */
+    /** For a run that does not know its model's window; a real run sets it from the window. */
     private static final long STANDARD_COMPACTION_TOKENS = 120_000L;
 
     /** Enough recent evidence to finish the argument the current deliberation is making. */
