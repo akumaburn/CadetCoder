@@ -1,19 +1,28 @@
 package com.eonmux.cadetcoder.commands;
 
+import com.eonmux.cadetcoder.ai.catalog.ModelCatalog;
 import com.eonmux.cadetcoder.ai.catalog.ModelsDevModel;
+import com.eonmux.cadetcoder.ai.catalog.ModelsDevProvider;
 import com.eonmux.cadetcoder.ai.catalog.ProviderModelListing;
 import com.eonmux.cadetcoder.ai.providers.ProviderConnector;
 import com.eonmux.cadetcoder.test.TestOutputCapture;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.mockito.MockedStatic;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.spy;
 
 /**
  * What {@code models} says a connector offers, and how it says a model is chosen.
@@ -44,9 +53,12 @@ public class AconnectorIsCountedByWhatItWillActuallyListTest {
 
     private TestOutputCapture output;
 
+    private MockedStatic<ModelCatalog> catalogue;
+
     @BeforeEach
     public void captureOutput() {
         ProviderModelListing.resetForTesting();
+        catalogue = aCatalogueWithout(SELF_LISTING);
         output = new TestOutputCapture();
         output.startCapture();
     }
@@ -54,7 +66,34 @@ public class AconnectorIsCountedByWhatItWillActuallyListTest {
     @AfterEach
     public void releaseOutput() {
         output.stopCapture();
+        catalogue.close();
         ProviderModelListing.resetForTesting();
+    }
+
+    /**
+     * The catalogue this machine holds, less one provider.
+     *
+     * <p>The catalogue comes from models.dev through a cache in the user's home directory, and
+     * models.dev adds providers. The tests here are about a connector the catalogue does not carry,
+     * so they say so rather than depend on what models.dev lists today.</p>
+     *
+     * @param providerId the provider the catalogue leaves out
+     * @return the static mock, to be closed after the test
+     */
+    private static MockedStatic<ModelCatalog> aCatalogueWithout(String providerId) {
+        ModelCatalog real = ModelCatalog.getInstance();
+        Map<String, ModelsDevProvider> providers = new LinkedHashMap<>(real.getProviders());
+        providers.remove(providerId);
+
+        ModelCatalog without = spy(real);
+        doReturn(providers).when(without).getProviders();
+        doAnswer(call -> providers.get(call.<String>getArgument(0)))
+                .when(without).getProvider(anyString());
+
+        MockedStatic<ModelCatalog> mock =
+                mockStatic(ModelCatalog.class, Mockito.CALLS_REAL_METHODS);
+        mock.when(ModelCatalog::getInstance).thenReturn(without);
+        return mock;
     }
 
     @Test
