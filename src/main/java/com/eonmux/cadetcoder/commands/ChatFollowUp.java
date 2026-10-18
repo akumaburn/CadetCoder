@@ -36,9 +36,6 @@ final class ChatFollowUp {
     private static final Pattern CHOICE =
             Pattern.compile("\\b(retry|skip|stop)\\b", Pattern.CASE_INSENSITIVE);
 
-    /** A reasoning block some models emit, which is not part of the answer. */
-    private static final Pattern THINKING = Pattern.compile("<think>.*?</think>", Pattern.DOTALL);
-
     private static final String WHAT_NEXT =
             "Based on the information available, what should I do next? Provide another ACTION block "
             + "or explain your findings.";
@@ -74,6 +71,9 @@ final class ChatFollowUp {
     StepResult afterAnAction(String[] args, ChatContext context, String llmResponse) {
         if (llmResponse == null || llmResponse.trim().isEmpty()) {
             return StepResult.failure("No response provided", context.toMap());
+        }
+        if (ChatActions.carriesSuccessMarker(llmResponse)) {
+            return theAnswer(context, llmResponse);
         }
         // Parsed with the SAME multi-tier engine used by analyze_request so a follow-up turn is
         // interpreted with identical confidence/validation/security logic (rather than the legacy
@@ -112,20 +112,20 @@ final class ChatFollowUp {
         if (llmResponse == null || llmResponse.trim().isEmpty()) {
             return StepResult.failure("No response provided for format retry", context.toMap());
         }
-        ParsedResponse parsed = chat.parseResponseWithEngine(llmResponse, context.getUserRequest());
-
         // Only a reply carrying the prompt's SUCCESS marker counts as "the model answered". Any other
         // unstructured reply is still a format failure, and must not have a guessed command run for
         // it -- reporting "done" having executed nothing is what made the agent look like it acted.
-        if (ChatActions.isFallbackOnly(parsed) && ChatActions.carriesSuccessMarker(llmResponse)) {
+        if (ChatActions.carriesSuccessMarker(llmResponse)) {
             context.setFormatRetryCount(0);
-            StepResult questioned = CompletionChallenge.questioning(context, llmResponse);
+            String answer = ChatActions.withoutThinking(llmResponse);
+            StepResult questioned = CompletionChallenge.questioning(context, answer);
             if (questioned != null) {
                 return questioned;
             }
-            OutputFormatter.println(llmResponse.trim());
+            OutputFormatter.println(answer);
             return StepResult.success("", context.toMap());
         }
+        ParsedResponse parsed = chat.parseResponseWithEngine(llmResponse, context.getUserRequest());
         List<ChatCommand.AIAction> actions = actionsIn(parsed);
         if (!actions.isEmpty()) {
             context.setFormatRetryCount(0);
@@ -176,20 +176,21 @@ final class ChatFollowUp {
     /**
      * The model has finished and said so.
      *
-     * <p>A reply already in the {@code SUCCESS:} form is passed through untouched, because that is
-     * the form {@link IterativeExecutor} reads as a terminal answer; anything else is labelled so it
-     * is not mistaken for one.</p>
+     * <p>A reply already in the {@code SUCCESS:} form is passed through without its inline
+     * reasoning, because that is the form {@link IterativeExecutor} reads as a terminal answer;
+     * anything else is labelled so it is not mistaken for one.</p>
      */
     private StepResult theAnswer(ChatContext context, String llmResponse) {
+        String answer = ChatActions.withoutThinking(llmResponse);
+
         // The one place a run that did work ends by answering, and therefore where uber mode has to
         // question it. Checked before anything is logged as final: a claim being sent back is not a
         // final answer, and recording it as one would put two of them in the session history.
-        StepResult questioned = CompletionChallenge.questioning(context, llmResponse);
+        StepResult questioned = CompletionChallenge.questioning(context, answer);
         if (questioned != null) {
             return questioned;
         }
 
-        String answer = llmResponse.trim();
         boolean alreadyMarked = ChatActions.carriesSuccessMarker(answer);
 
         chat.logDebug("Final AI Response", String.format("USER_REQUEST: %s", context.getUserRequest()));
@@ -208,7 +209,8 @@ final class ChatFollowUp {
      *
      * <p>Three words answer it -- {@code retry}, {@code skip}, {@code stop} -- and so does a new
      * action block, which is read first because it says all three things at once: not this command,
-     * that one, now.</p>
+     * that one, now. A {@code SUCCESS:} reply is read before either: the model has its answer and
+     * needs no step it was asked about.</p>
      *
      * @param args        the command arguments, carried through re-entry
      * @param context     the run's context
@@ -223,6 +225,9 @@ final class ChatFollowUp {
                                   "Please reply with a new ACTION block, or with 'retry', 'skip' "
                                   + "or 'stop'.")
                     .addressedToModel();
+        }
+        if (ChatActions.carriesSuccessMarker(llmResponse)) {
+            return theAnswer(context, llmResponse);
         }
         // An action block is an answer to the question, and the most useful one there is: a model
         // that has read the error and written a different command has said "retry, like this".
@@ -277,7 +282,7 @@ final class ChatFollowUp {
      * @return {@code retry}, {@code skip}, {@code stop}, or the reply itself when it is none of them
      */
     static String choiceIn(String llmResponse) {
-        String cleaned = THINKING.matcher(llmResponse).replaceAll("").trim();
+        String cleaned = ChatActions.withoutThinking(llmResponse);
         Matcher found = CHOICE.matcher(cleaned);
         return found.find() ? found.group(1).toLowerCase() : cleaned.toLowerCase();
     }

@@ -222,6 +222,26 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                 return StepResult.interrupted("Command interrupted by user", context.toMap());
             }
 
+            // The marker is read before the reply is parsed. The prompt forbids an action in a
+            // SUCCESS reply, so action-like text in one is a quotation, and nothing in it runs.
+            if (ChatActions.carriesSuccessMarker(aiResponse)) {
+                String answer = ChatActions.withoutThinking(aiResponse);
+                // Uber mode does not believe this yet. The claim is sent back to be checked
+                // against the request that started the run, and only what survives that gets to
+                // be the answer -- so the answer is NOT printed on this path.
+                StepResult questioned = CompletionChallenge.questioning(context, answer);
+                if (questioned != null) {
+                    logStep("Completion questioned", String.format(
+                            "Question %d of %d", context.getUberChecksPassed(),
+                            com.eonmux.cadetcoder.ai.UberMode.questionCount()));
+                    return questioned;
+                }
+                logStep("Conversational response",
+                        "The reply opens with SUCCESS: -> returning the model's answer directly");
+                OutputFormatter.println(answer);
+                return StepResult.success("", context.toMap());
+            }
+
             // Parse AI response to extract actions using new multi-tier parsing engine
             logStep("Parsing AI response for actions");
             if (parsingEngine == null) {
@@ -252,32 +272,12 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                 return RefusedAction.tellTheModel(context, refused);
             }
 
-            // No structured ACTION could be parsed - only a semantic/fuzzy guess over prose. Two very
-            // different situations look alike here and must NOT be conflated:
-            //   * the model answered and said so with the prompt's own SUCCESS: marker -> that is the
-            //     answer; surface it and finish.
-            //   * anything else -> the model did not follow the documented format. Treat it as a
-            //     format failure and re-prompt, instead of silently succeeding with an empty result
-            //     (which reported "done" having executed nothing) or executing the invented command.
+            // No structured ACTION could be parsed - only a semantic/fuzzy guess over prose, and
+            // the reply carries no SUCCESS: marker. The model did not follow the documented
+            // format. Treat it as a format failure and re-prompt. Succeeding with an empty result
+            // reports "done" with nothing run, and running the guess runs a command nobody asked
+            // for.
             if (fallbackOnly) {
-                if (ChatActions.carriesSuccessMarker(aiResponse)) {
-                    // Uber mode does not believe this yet. The claim is sent back to be checked
-                    // against the request that started the run, and only what survives that gets to
-                    // be the answer -- so the answer is NOT printed on this path.
-                    StepResult questioned = CompletionChallenge.questioning(context, aiResponse);
-                    if (questioned != null) {
-                        logStep("Completion questioned", String.format(
-                                "Question %d of %d", context.getUberChecksPassed(),
-                                com.eonmux.cadetcoder.ai.UberMode.questionCount()));
-                        return questioned;
-                    }
-                    logStep("Conversational response", String.format(
-                            "Strategy: %s, Confidence: %.2f -> returning the model's answer directly",
-                            parsedResponse.getStrategyUsed(), parsedResponse.getConfidence()));
-                    OutputFormatter.println(aiResponse.trim());
-                    return StepResult.success("", context.toMap());
-                }
-
                 logWarning("Action parsing", String.format(
                         "No structured action found (strategy: %s, confidence: %.2f) and no SUCCESS marker"
                         + " -> requesting a format correction",

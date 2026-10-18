@@ -442,7 +442,7 @@ public class XMLActionParser implements ParsingStrategy {
     
     @Override
     public int getPriority() {
-        return 3; // After JSON, the ACTION block and the vendors' own tool-call notations
+        return 3; // After the ACTION block, JSON and the vendors' own tool-call notations
     }
 
     /**

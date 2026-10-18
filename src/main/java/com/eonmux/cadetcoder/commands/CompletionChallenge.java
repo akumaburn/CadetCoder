@@ -65,7 +65,7 @@ final class CompletionChallenge {
         int round = context.getUberChecksPassed() + 1;
         context.setUberChecksPassed(round);
         // Where the run is left is what decides who reads the reply, and a question whose answer
-        // nobody reads is not a question. This is asked from three steps, and one of them --
+        // nobody reads is not a question. This is asked from four steps, and one of them --
         // analyze_request -- puts the ORIGINAL request to the model and takes no reply of its own,
         // so a run left there would have the answer dropped where it arrived and the whole request
         // asked again from the beginning. next_step is the step that means "the model has spoken,

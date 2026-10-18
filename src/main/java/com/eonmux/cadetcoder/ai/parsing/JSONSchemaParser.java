@@ -14,8 +14,11 @@ import java.util.regex.Matcher;
 
 /**
  * Parsing strategy that handles JSON-formatted AI responses.
- * This is the format the system prompt asks for first.
- * 
+ *
+ * <p>No prompt asks for this format. It reads a model that writes it anyway, and runs after the
+ * ACTION block strategy: a reply can quote a JSON object, or carry one as an ACTION block's
+ * content, and that object is not an action.</p>
+ *
  * Expected format:
  * {
  *   "action": "command_name",
@@ -536,7 +539,7 @@ public class JSONSchemaParser implements ParsingStrategy {
     
     @Override
     public int getPriority() {
-        return 0; // Highest priority
+        return 1; // After the ACTION block, which the chat prompt asks for instead of JSON
     }
     
     @Override

@@ -284,7 +284,7 @@ public class ToolCallParser implements ParsingStrategy {
 
     @Override
     public int getPriority() {
-        return 2; // After JSON and the ACTION block, ahead of XML and the inference strategies.
+        return 2; // After the ACTION block and JSON, ahead of XML and the inference strategies.
     }
 
     @Override

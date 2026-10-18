@@ -28,8 +28,8 @@ public class ParsedResponse {
      * here exists to salvage a reply that did not follow them.</p>
      */
     public enum ParsingStrategy {
-        JSON_SCHEMA,       // A JSON object; tried first, but not a format the model is asked for
         ACTION_BLOCK,      // The ACTION_START/END block the system prompts require
+        JSON_SCHEMA,       // A JSON object, which no prompt asks for
         TOOL_CALL,         // A tool call in the notation the model's own vendor trained it on
         XML_ACTION,        // XML action tag format
         SEMANTIC_PARSING,  // Natural language inference

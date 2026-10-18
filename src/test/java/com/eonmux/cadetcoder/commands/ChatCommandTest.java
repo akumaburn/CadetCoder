@@ -533,10 +533,6 @@ public class ChatCommandTest {
                 "I called the read tool and the file looks fine."))
                 .as("prose about tools is not an attempt at one")
                 .isFalse();
-        assertThat(ChatActions.looksLikeABotchedAction(
-                "SUCCESS: the parser reads <tool_call>{\"name\": \"read\"}</tool_call> blocks."))
-                .as("a declared final answer about the notations is an answer, not an attempt")
-                .isFalse();
     }
 
     /**

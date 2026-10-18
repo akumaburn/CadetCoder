@@ -56,8 +56,8 @@ public class ResponseParsingEngine {
         List<ParsingStrategy> strategyList = new ArrayList<>();
         
         // Add strategies in priority order
-        strategyList.add(new JSONSchemaParser());
         strategyList.add(new ActionBlockParser());
+        strategyList.add(new JSONSchemaParser());
         strategyList.add(new ToolCallParser());
         strategyList.add(new XMLActionParser());
         strategyList.add(new SemanticParser());
@@ -158,6 +158,11 @@ public class ResponseParsingEngine {
      * shell string synthesised from the model's prose. Two rules prevent that: a stored result is only
      * replaced by a STRICTLY better one, and once a structured parser has produced actions the
      * fallbacks are not consulted at all.</p>
+     *
+     * <p>An ACTION block that produced actions ends the search, whatever its confidence. It is the
+     * format the chat prompt asks for, so the block is the model's request, and its own validation
+     * decides the turn. A block that names an unknown command scores low, and a JSON object that
+     * the reply only quotes, or carries as the block's content, would otherwise outscore it.</p>
      */
     private ParsedResponse parseWithStrategies(String aiResponse, ParsingContext context, long startTime) {
         // Best-so-far across all strategies, in priority order (ties resolved toward the earlier,
@@ -189,6 +194,11 @@ public class ResponseParsingEngine {
                 ParsedResponse strategyResult = strategy.parse(aiResponse, context);
 
                 if (strategyResult.isSuccessful()) {
+                    if (isRequestedFormat(strategyResult) && strategyResult.hasActions()) {
+                        result = strategyResult;
+                        usedStrategy = strategy;
+                        break;
+                    }
                     if (isStructuredResult(strategyResult) && strategyResult.hasActions()) {
                         structuredActionsFound = true;
                     }
@@ -329,6 +339,11 @@ public class ResponseParsingEngine {
     public static boolean isFallbackOnly(ParsedResponse response) {
         return response != null
             && Boolean.TRUE.equals(response.getMetadata().get(FALLBACK_ONLY_METADATA));
+    }
+
+    /** Whether the result is in the ACTION block format, which the chat prompt asks for. */
+    private static boolean isRequestedFormat(ParsedResponse response) {
+        return response.getStrategyUsed() == ParsedResponse.ParsingStrategy.ACTION_BLOCK;
     }
 
     /** Whether the result came from a structured (non-inferring) parsing strategy. */

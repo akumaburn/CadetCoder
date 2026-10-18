@@ -8,8 +8,8 @@ import java.util.regex.Pattern;
 import java.util.regex.Matcher;
 
 /**
- * Parsing strategy that handles the legacy ACTION_START/ACTION_END format.
- * This format is maintained for backward compatibility.
+ * Parsing strategy that handles the ACTION_START/ACTION_END format, which the chat prompt asks for.
+ * It runs before every other strategy.
  *
  * Expected format:
  * ACTION_START
@@ -567,7 +567,7 @@ public class ActionBlockParser implements ParsingStrategy {
     
     @Override
     public int getPriority() {
-        return 1; // Second priority after JSON
+        return 0; // First: the ACTION block is the format the chat prompt asks for
     }
     
     @Override

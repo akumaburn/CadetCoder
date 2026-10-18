@@ -52,17 +52,31 @@ final class ChatActions {
      */
     private static final Pattern BARE_ACTION_LINE = Pattern.compile("(?im)^\\s*action\\s*$");
 
+    /** A reasoning block some models write inline, which is not part of the reply. */
+    private static final Pattern THINKING = Pattern.compile("<think>.*?</think>", Pattern.DOTALL);
+
     private ChatActions() {
     }
 
     /**
      * Whether the reply carries the prompt's own completion marker.
      *
+     * <p>The marker is looked for after any inline reasoning. A model that reasons in its reply
+     * and then answers has answered.</p>
+     *
      * @param reply the raw model reply
      * @return {@code true} when the model is presenting its final answer rather than a tool call
      */
     static boolean carriesSuccessMarker(String reply) {
-        return reply != null && reply.trim().startsWith(SUCCESS_MARKER);
+        return reply != null && withoutThinking(reply).startsWith(SUCCESS_MARKER);
+    }
+
+    /**
+     * @param reply the raw model reply
+     * @return the reply without its inline reasoning blocks, trimmed
+     */
+    static String withoutThinking(String reply) {
+        return THINKING.matcher(reply).replaceAll("").trim();
     }
 
     /**
@@ -106,9 +120,8 @@ final class ChatActions {
      * over a call it had never made -- the worst of the three outcomes, because nothing on screen
      * says the work did not happen.</p>
      *
-     * <p>A reply that opens with the completion marker is the exception. The model has said it is
-     * finished, and an answer that quotes one of these notations -- which an answer about this
-     * codebase will -- is an answer, not an attempt.</p>
+     * <p>A reply that opens with {@code SUCCESS:} does not reach this check. The turn reads the
+     * marker first, and an answer that quotes one of these notations is an answer.</p>
      *
      * @param reply the raw model reply
      * @return {@code true} when the turn should be sent back for format correction
@@ -120,7 +133,7 @@ final class ChatActions {
         if (ACTION_LABEL_LINE.matcher(reply).find() || BARE_ACTION_LINE.matcher(reply).find()) {
             return true;
         }
-        if (ToolCalls.appearIn(reply) && !carriesSuccessMarker(reply)) {
+        if (ToolCalls.appearIn(reply)) {
             return true;
         }
         String lower = reply.toLowerCase();
