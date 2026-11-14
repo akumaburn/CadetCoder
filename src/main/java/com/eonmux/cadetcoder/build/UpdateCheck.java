@@ -2,6 +2,7 @@ package com.eonmux.cadetcoder.build;
 
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.commands.CommandUsage;
+import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -68,16 +69,22 @@ public final class UpdateCheck {
         if (repo == null) {
             return null;
         }
-        HttpRequest request = com.eonmux.cadetcoder.net.HttpRequests.to(
+        HttpRequest.Builder request = com.eonmux.cadetcoder.net.HttpRequests.to(
                 URI.create(String.format(LATEST_RELEASE_API, repo)))
                 .timeout(Duration.ofSeconds(10))
                 .header("Accept", "application/vnd.github+json")
                 .header("User-Agent", "cadet/" + BuildInfo.current().version()
-                                       + " (update check)")
-                .GET()
-                .build();
+                                       + " (update check)");
+        // GitHub allows an unauthenticated caller sixty of these an hour, counted by address --
+        // which on a shared connection is everyone's quota together. A token lifts that to a
+        // quota of its own, and is taken from the same environment every GitHub tool reads.
+        String token = token();
+        if (token != null) {
+            request.header("Authorization", "Bearer " + token);
+        }
         try {
-            HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = client().send(request.GET().build(),
+                                                           HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 return null;
             }
@@ -92,6 +99,21 @@ public final class UpdateCheck {
             }
             return null;
         }
+    }
+
+    /**
+     * A GitHub token from the environment, if the user has one there.
+     *
+     * @return it, or {@code null} when there is none; never logged, never stored
+     */
+    private static String token() {
+        for (String name : new String[] {"GH_TOKEN", "GITHUB_TOKEN"}) {
+            String value = System.getenv(name);
+            if (value != null && !value.isBlank()) {
+                return value.trim();
+            }
+        }
+        return null;
     }
 
     /**
@@ -268,10 +290,16 @@ public final class UpdateCheck {
             if (release.sha256Url() != null) {
                 node.put("sha256Url", release.sha256Url());
             }
+            // The notice is the first thing in a run to touch the base directory, so the
+            // directory it keeps its answer in may not exist yet. Its absence is not a failure
+            // to write: create it the way every other component under baseDir creates its own.
+            java.nio.file.Files.createDirectories(cachePath().getParent());
             MAPPER.writeValue(cachePath().toFile(), node);
         } catch (IOException | RuntimeException unwritable) {
             // A cache that cannot be written costs the next start-up one network call, and the
             // user nothing.
+            DebugLogger.getInstance().debug("UpdateCheck",
+                    "Could not write the update-check cache: " + unwritable);
         }
     }
 
