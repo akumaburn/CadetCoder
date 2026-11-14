@@ -1428,6 +1428,25 @@ cadet --config ~/work/cadet.json config baseDir ~/work/cadet   # once
 cadet --config ~/work/cadet.json agent "..."                   # thereafter
 ```
 
+## Releases and updating
+
+Every build names the commit and the moment it was made: `cadet --version`
+says "build 631e433, 2026-11-14T08:01:41Z", and so does everything that
+compares builds against each other.
+
+Every jar is published as a GitHub release of this repository, under the fixed
+asset name `cadet-latest.jar` with its checksum beside it. At start-up
+CadetCoder compares its own build against that release's latest one, at most
+once a day, and says one line when the release is ahead of it. `update check`
+says the whole comparison; `update` (short for `update now`) downloads the
+release jar, verifies its checksum, keeps the jar it replaces as a `.bak`
+beside itself, and puts the new one in its place. The new build runs the next
+time you start `cadet`; the process that installed it finishes on the build it
+started with. A build that cannot say where it came from -- one made outside
+git -- reports that it cannot check rather than guessing, and a run with no
+network says nothing rather than waiting on one. A model may run
+`update check`; installing an update is always yours, whoever asks.
+
 `logs/history.log` holds the interactive shell's command history, which is the
 list that `Up`, `Down` and `F3` walk back through. CadetCoder appends a line
 the moment you enter it, so a session that ends in a crash or a closed terminal
