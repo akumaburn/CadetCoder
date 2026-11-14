@@ -1,11 +1,13 @@
 package com.eonmux.cadetcoder.ai.providers;
 
 import com.eonmux.cadetcoder.auth.AwsSigV4Signer;
+import com.eonmux.cadetcoder.build.BuildInfo;
 import com.eonmux.cadetcoder.net.AmazonBedrockBackend;
 import com.eonmux.cadetcoder.net.AnthropicBackend;
 import com.eonmux.cadetcoder.net.GoogleGenerativeAIBackend;
 import com.eonmux.cadetcoder.net.LLMBackend;
 import com.eonmux.cadetcoder.net.OpenAICompatibleBackend;
+import com.eonmux.cadetcoder.session.SessionManager;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -31,6 +33,7 @@ public final class ProviderConnector {
     private final DataRetentionControl retention;
     private final boolean             modelsListedLive;
     private final List<String>        relatedCatalogIds;
+    private final String              sessionHeaderName;
 
     public ProviderConnector(String id,
                              String displayName,
@@ -74,7 +77,7 @@ public final class ProviderConnector {
                              ModelWire wire,
                              DataRetentionControl retention) {
         this(id, displayName, env, defaultBaseUrl, authScheme, protocol, staticHeaders, wire,
-             retention, false, List.of());
+             retention, false, List.of(), null);
     }
 
     private ProviderConnector(String id,
@@ -87,7 +90,8 @@ public final class ProviderConnector {
                               ModelWire wire,
                               DataRetentionControl retention,
                               boolean modelsListedLive,
-                              List<String> relatedCatalogIds) {
+                              List<String> relatedCatalogIds,
+                              String sessionHeaderName) {
         this.id             = id;
         this.displayName    = displayName;
         this.env            = env != null ? env : List.of();
@@ -99,6 +103,7 @@ public final class ProviderConnector {
         this.retention      = retention != null ? retention : DataRetentionControl.none();
         this.modelsListedLive  = modelsListedLive;
         this.relatedCatalogIds = relatedCatalogIds != null ? List.copyOf(relatedCatalogIds) : List.of();
+        this.sessionHeaderName = sessionHeaderName;
     }
 
     /**
@@ -121,7 +126,37 @@ public final class ProviderConnector {
      */
     public ProviderConnector listingModelsLive(List<String> related) {
         return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
-                                     staticHeaders, wire, retention, true, related);
+                                     staticHeaders, wire, retention, true, related,
+                                     sessionHeaderName);
+    }
+
+    /**
+     * This connector, carrying the conversation's session id on every completion.
+     *
+     * <h2>Why a gateway would ask</h2>
+     *
+     * <p>OpenCode Go routes by conversation and primes its prompt cache along the same line: a
+     * client that sends a stable identifier per conversation gets its requests kept together, and
+     * one that does not is refused outright with {@code MissingSessionID}. The header is not a
+     * static property of the connector -- its value is the id of the conversation the request
+     * belongs to -- so it is merged at backend build time, from the session this process is
+     * running, rather than filed beside the connector's fixed headers.</p>
+     *
+     * @param headerName the header to carry the session id in, as {@code x-opencode-session}
+     * @return a copy of this connector that sends the header
+     */
+    public ProviderConnector withSessionHeader(String headerName) {
+        return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
+                                     staticHeaders, wire, retention, modelsListedLive,
+                                     relatedCatalogIds, headerName);
+    }
+
+    /**
+     * @return the header that carries the conversation's session id on every completion, or
+     *         {@code null} when this connector asks for none
+     */
+    public String getSessionHeaderName() {
+        return sessionHeaderName;
     }
 
     /**
@@ -284,12 +319,23 @@ public final class ProviderConnector {
      * @param zeroDataRetention whether to add the refusal
      * @return the headers to send, never null
      */
-    private Map<String, String> headersFor(boolean zeroDataRetention) {
-        if (!zeroDataRetention || retention.headers().isEmpty()) {
-            return staticHeaders;
-        }
+    /**
+     * The headers a completion from this connector carries, merged in the order that decides
+     * which word wins when two sources name the same header: the connector's own static headers,
+     * then the client identification, then the retention preference, then the session. Package
+     * visible because the merge order is a contract the gateway tests hold.
+     */
+    Map<String, String> headersFor(boolean zeroDataRetention) {
         Map<String, String> merged = new LinkedHashMap<>(staticHeaders);
-        merged.putAll(retention.headers());
+        // The one identification the wire asks of a client: its own name, rather than the HTTP
+        // library's default. A connector that names a user agent of its own keeps theirs.
+        merged.putIfAbsent("User-Agent", "CadetCoder/" + BuildInfo.current().version());
+        if (zeroDataRetention && !retention.headers().isEmpty()) {
+            merged.putAll(retention.headers());
+        }
+        if (sessionHeaderName != null) {
+            merged.put(sessionHeaderName, SessionManager.getInstance().getCurrentSessionId());
+        }
         return merged;
     }
 

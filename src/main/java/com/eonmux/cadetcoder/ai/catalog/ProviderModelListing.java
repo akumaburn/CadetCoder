@@ -3,9 +3,11 @@ package com.eonmux.cadetcoder.ai.catalog;
 import com.eonmux.cadetcoder.ai.providers.AuthHeaders;
 import com.eonmux.cadetcoder.ai.providers.ConnectorProtocol;
 import com.eonmux.cadetcoder.ai.providers.ProviderConnector;
+import com.eonmux.cadetcoder.build.BuildInfo;
 import com.eonmux.cadetcoder.logging.CadetLogger;
 import com.eonmux.cadetcoder.net.BoundedHttp;
 import com.eonmux.cadetcoder.net.HttpRequests;
+import com.eonmux.cadetcoder.session.SessionManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -203,6 +205,13 @@ public final class ProviderModelListing {
                                                      .GET();
             for (Map.Entry<String, String> header : connector.getStaticHeaders().entrySet()) {
                 builder.header(header.getKey(), header.getValue());
+            }
+            // The same identification a completion carries: this tool's name, and -- where the
+            // connector asks for it, as OpenCode Go does -- the conversation the listing serves.
+            builder.header("User-Agent", "CadetCoder/" + BuildInfo.current().version());
+            if (connector.getSessionHeaderName() != null) {
+                builder.header(connector.getSessionHeaderName(),
+                               SessionManager.getInstance().getCurrentSessionId());
             }
             AuthHeaders.apply(builder, connector.getAuthScheme(), apiKey);
 

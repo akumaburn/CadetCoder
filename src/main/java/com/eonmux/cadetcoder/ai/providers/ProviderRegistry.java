@@ -142,10 +142,15 @@ public final class ProviderRegistry {
         // https://opencode.ai/docs/zen, so a single login/key authenticates either gateway. These
         // are listed in the models.dev catalog (providers "opencode" and "opencode-go"); without a
         // registered connector here, neither could be selected via `login`/`models`.
+        //
+        // Go refuses a completion that names no conversation -- HTTP 400 MissingSessionID -- and
+        // asks for a stable session id per conversation in x-opencode-session, which is what the
+        // session id CadetCoder already keeps is for. Zen asks for no such header and gets none.
         add("opencode", "OpenCode Zen", List.of("OPENCODE_API_KEY"),
                 "https://opencode.ai/zen/v1", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT, null);
-        add("opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT, null);
+        register(new ProviderConnector("opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT,
+                null).withSessionHeader("x-opencode-session"));
 
         // Command Code's Provider API: one hosted gateway in front of the Anthropic, OpenAI,
         // DeepSeek, Qwen, GLM and Gemini families, reached with the same key that authenticates
