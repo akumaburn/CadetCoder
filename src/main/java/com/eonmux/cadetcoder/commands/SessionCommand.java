@@ -24,10 +24,10 @@ import java.util.List;
  * of.</p>
  *
  * <p>And there was no way to finish a session. Every run continues whatever is in
- * {@code session.json}, which is right for a tool used mostly one command at a time and means a
- * conversation accumulates for as long as the install does. A resumed run spends a quarter of its
- * context window on that history, so with no way to draw a line, that quarter eventually goes on
- * work from weeks ago.</p>
+ * {@code session.json} from the directory it was started in, which is right for a tool used mostly
+ * one command at a time and means a conversation accumulates for as long as the install does. A
+ * resumed run spends a quarter of its context window on that history, so with no way to draw a
+ * line, that quarter eventually goes on work from weeks ago.</p>
  */
 @picocli.CommandLine.Command(name = "session",
         description = "Show, list, switch or start sessions")
@@ -65,6 +65,7 @@ public class SessionCommand implements CommandRegistry.Command {
         OutputFormatter.printHeader("Current Session");
         UnifiedOutput.println("  Id           " + state.getSessionId());
         UnifiedOutput.println("  Started      " + when(state.getCreatedAt()));
+        UnifiedOutput.println("  Directory    " + (state.getProject() == null ? "unknown" : state.getProject()));
         UnifiedOutput.println("  Turns        " + sessions.getConversationHistory().size());
         UnifiedOutput.println("  Scrollback   " + sessions.getTranscript().size() + " saved region(s)");
         UnifiedOutput.println("  Todo items   " + sessions.getTodoList().size());

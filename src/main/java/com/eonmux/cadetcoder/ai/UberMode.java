@@ -19,10 +19,15 @@ import java.util.List;
  *
  * <h2>What is done about it</h2>
  *
- * <p>The claim is questioned before it is accepted. The model is sent back with the original request
- * and asked to check it part by part against what actually happened -- and, where the project has a
- * way of being checked, to run it rather than reason about it. A claim that survives that ends the
- * run; a claim that does not turns into more work, which is the entire point.</p>
+ * <p>Two things. At the start, the run expands the request into a comprehensive plan -- every
+ * separate thing it asks for, explicit and implied, each with how it will be verified -- which is
+ * what the whole run is worked from and what its finish is judged against. At the end, the claim of
+ * completion is questioned before it is accepted: the model is sent back to account for every item
+ * of that plan against what actually happened -- and, where the project has a way of being checked,
+ * to run it rather than reason about it. An item partly done is not done, an item described is not
+ * done, and a run that stops with items outstanding has exited early, not finished. A claim that
+ * survives the questioning ends the run; a claim that does not turns into more work, which is the
+ * entire point.</p>
  *
  * <h2>What ends a run, now that nothing counts down</h2>
  *
@@ -47,36 +52,46 @@ public final class UberMode {
     public static final String PROMPT_NAME = "ubermode";
 
     /**
-     * The first push-back, which asks for the request to be re-read.
+     * The first push-back, which checks the work against the plan the run expanded the request
+     * into.
      *
-     * <p>Against the ORIGINAL request rather than the summary just written, because a summary is
-     * written from the same understanding that decided the work was done: checked against itself it
-     * always agrees, and the parts of the request that were never taken in are exactly the parts a
-     * summary does not mention.</p>
+     * <p>Against the plan rather than against the summary just written, for the reason the plan is
+     * demanded at the start: a summary is written from the same understanding that decided the work
+     * was done, so checked against itself it always agrees. The plan was written before any of the
+     * work, item by item from the request as it was originally made, and an item on it can be
+     * answered for by name -- done and verified, partly done, not started, or only described. A run
+     * that skipped the plan is told to build it now, which is what stops the plan being left out to
+     * dodge the check.</p>
      */
     private static final String FIRST =
-            "Before this run ends: go back to the request as it was originally made and take it "
-            + "apart into every separate thing it asked for. For each one, say whether it is done "
-            + "-- done, not planned, not partly done, not described. Where this project has a way "
-            + "of being checked (its build, its tests, its linter), run it now rather than "
-            + "reasoning about whether it would pass. If anything is outstanding, continue with "
-            + "ONE action and do not claim completion again until it is not.";
+            "Before this run ends: go back to the comprehensive plan you expanded the original "
+            + "request into -- the one listing every separate thing it asked for, explicit and "
+            + "implied. If you never made one, make it now, before answering anything else. Then "
+            + "account for EVERY item of that plan, one by one: is it done and verified, partly "
+            + "done, not started, or only described? Where this project has a way of being checked "
+            + "(its build, its tests, its linter), run it now rather than reasoning about whether "
+            + "it would pass. An item partly done is not done, an item described is not done, and "
+            + "stopping with items outstanding is an early exit, not a completion. If anything is "
+            + "outstanding, continue with ONE action and do not claim completion again until every "
+            + "item of the plan is done and verified.";
 
     /**
      * The second push-back, which asks about what was changed rather than what was asked.
      *
      * <p>Deliberately a different question. Repeating the first one gets the first answer again --
-     * the model has already checked the request against its own account of the work and found them
-     * to agree. What it has not done is look at what it actually touched and ask what else depends
-     * on it, which is where the work that gets left behind actually lives.</p>
+     * the model has already checked the plan against its own account of the work and found them to
+     * agree. What it has not done is look at what it actually touched and ask what else depends
+     * on it, which is where the work that gets left behind actually lives; and it has not been
+     * asked whether any item of the plan was closed by saying rather than by doing, which is the
+     * partial work a plan-side accounting can miss.</p>
      */
     private static final String SECOND =
             "One more check before this run ends: look at what you actually changed, not at what "
             + "you set out to change. For each file you touched, is anything that depends on it now "
             + "wrong or out of date -- another caller, a test, a document that describes the old "
-            + "behaviour? Did you leave anything unfinished, or anything working only because you "
-            + "have not tried the case that breaks it? If so, continue with ONE action; if not, "
-            + "declare completion and the run will end.";
+            + "behaviour? Is any item of the plan only started, or marked done while in fact only "
+            + "described? If so, continue with ONE action; if not, declare completion and the run "
+            + "will end.";
 
     /** The questions, in the order they are put. A claim must survive all of them in a row. */
     private static final List<String> QUESTIONS = List.of(FIRST, SECOND);

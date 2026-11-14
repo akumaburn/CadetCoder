@@ -52,6 +52,17 @@ public class SessionState {
     /** Where the last interrupted run stopped, or {@code null} when there is nothing to resume. */
     private ResumePoint                    resumePoint;
 
+    /**
+     * The directory the session was started in, absolute and normalized, or {@code null} for a
+     * session written before this was recorded.
+     *
+     * <p>A session belongs to the directory it was started in for its whole life, and the property
+     * is never refreshed: {@link SessionManager} continues a session only in that directory, and
+     * starts a new one anywhere else. The same rule {@link ResumePoint#isHere()} applies to an
+     * interrupted run, and the same method names it here.</p>
+     */
+    private String                         project;
+
     public SessionState() {
     }
 
@@ -97,6 +108,27 @@ public class SessionState {
 
     public void setResumePoint(ResumePoint resumePoint) {
         this.resumePoint = resumePoint;
+    }
+
+    /** @return the directory the session was started in, or {@code null} when it records none */
+    public String getProject() {
+        return project;
+    }
+
+    public void setProject(String project) {
+        this.project = project;
+    }
+
+    /**
+     * @return whether the session was started in the directory this process works in. A session
+     *         that records no directory was written by a build that kept none, and cannot establish
+     *         that it belongs here, so it answers {@code false}.
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isHere() {
+        return project != null && !project.isBlank()
+               && ResumePoint.projectHere().equals(
+                       java.nio.file.Paths.get(project).toAbsolutePath().normalize().toString());
     }
 
     public String getSessionId() {

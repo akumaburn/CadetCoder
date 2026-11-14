@@ -22,10 +22,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * <p><b>What is locked here</b>: that the mode is off unless it is asked for, since it spends the
  * user's tokens on work they may consider done; that the directive reaches an agentic prompt only
  * while it is on, and is appended rather than prepended so it qualifies the contract above it; that
- * a run that has answered every question in a row is believed, so a model that would always find
- * one more thing cannot hold a run open for ever; and that a challenge names the request and quotes
- * the claim, because a model asked whether it is "really done" agrees and a model asked whether a
- * named claim holds has to look.</p>
+ * a run is told to expand its request into a comprehensive plan before any work, and that the first
+ * closing question accounts for every item of that plan -- so partial work is named rather than
+ * buried; that a run that has answered every question in a row is believed, so a model that would
+ * always find one more thing cannot hold a run open for ever; and that a challenge names the request
+ * and quotes the claim, because a model asked whether it is "really done" agrees and a model asked
+ * whether a named claim holds has to look.</p>
  */
 public class DrivingATaskToTheEndTest {
 
@@ -119,15 +121,49 @@ public class DrivingATaskToTheEndTest {
 
     /**
      * The second question has to be a different question. Asked the first one twice, a model gives
-     * the first answer twice -- it has already checked the request against its own account of the
-     * work and found them to agree.
+     * the first answer twice -- it has already checked the plan against its own account of the work
+     * and found them to agree.
      */
     @Test
     public void thesecondQuestionAsksSomethingTheFirstDidNot() {
         assertThat(UberMode.questionFor(2)).isNotEqualTo(UberMode.questionFor(1));
-        assertThat(UberMode.questionFor(1)).contains("originally");
         assertThat(UberMode.questionFor(2)).contains("actually changed");
         assertThat(UberMode.questionFor(3)).isEqualTo(UberMode.questionFor(2));
+    }
+
+    /**
+     * The first question checks the work against the plan the run expanded the request into, and
+     * refuses the two ways work gets left short: an item half done, and an item answered with a
+     * description of the work instead of the work. Stopping there is named for what it is, so a
+     * run cannot rebrand an early exit as a completion.
+     */
+    @Test
+    public void thefirstQuestionChecksEveryItemOfThePlanAndRejectsPartialWork() {
+        String first = UberMode.questionFor(1);
+
+        assertThat(first).contains("comprehensive plan");
+        assertThat(first).contains("original");
+        // A run that skipped the plan cannot dodge the check by having skipped it.
+        assertThat(first).contains("make it now");
+        assertThat(first).contains("partly done");
+        assertThat(first).contains("only described");
+        assertThat(first).contains("early exit");
+        assertThat(first).contains("every item of the plan is done and verified");
+    }
+
+    /** The plan is demanded before any work, in the prompt the whole run is driven by. */
+    @Test
+    public void thedirectiveExpandsTheRequestIntoAPlanBeforeAnyWork() {
+        turn(true);
+        String directive = UberMode.directive();
+
+        assertThat(directive).contains("Plan before you work");
+        assertThat(directive).contains("comprehensive plan");
+        assertThat(directive).contains("Before the first action");
+        assertThat(directive.indexOf("Plan before you work"))
+                .as("the plan comes before the account of finishing it")
+                .isLessThan(directive.indexOf("Finished means"));
+        assertThat(directive).contains("exited early");
     }
 
     @Test

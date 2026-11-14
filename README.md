@@ -1409,6 +1409,12 @@ Everything lives under `~/.cadet/`, rather than under `~/.config/cadet/`.
 └── copilot-auth.json     # GitHub Copilot token, if you logged in
 ```
 
+`session.json` is one file for every directory the tool runs in. A run
+continues it only in the directory the session was started in; anywhere else it
+starts a new session and leaves the old one in `sessions/`, where
+`--continue`, `--resume <id>` and `/session resume <id>` still reach it. Those
+three work from any directory, because they name the session they want.
+
 Override the location with `--base-dir <path>`. That moves everything in the
 tree except `config.json` itself. CadetCoder has to find `config.json` before
 it can read any setting inside it, so name that one file with

@@ -78,12 +78,13 @@ public class SessionFileResilienceTest {
     @Test
     public void aPropertyThisBuildDoesNotKnowDoesNotCostTheConversation() throws Exception {
         // Exactly the shape of a session written by a build with one field more than this one, or
-        // one field this one has since dropped.
+        // one field this one has since dropped. It was started in this directory, so what is under
+        // test is the unknown fields and not the directory gate in the load.
         Files.writeString(sessionFile(), """
-                {"sessionId":"session-42","createdAt":1,"lastModified":2,
+                {"sessionId":"session-42","createdAt":1,"lastModified":2,"project":"%s",
                  "conversationHistory":["User: remember this","AI: noted"],
                  "somethingThisBuildHasNeverHeardOf":{"nested":true},
-                 "anotherOne":[1,2,3]}""");
+                 "anotherOne":[1,2,3]}""".formatted(ResumePoint.projectHere()));
 
         SessionManager manager = SessionManager.getInstance();
 
@@ -95,9 +96,10 @@ public class SessionFileResilienceTest {
     @Test
     public void aSessionCarryingTheFieldsThisBuildRemovedStillLoads() throws Exception {
         // Every session file written before those four fields were removed looks like this, which
-        // is to say every session file on every machine that has run this tool.
+        // is to say every session file on every machine that has run this tool. It was started in
+        // this directory, so the unknown fields are what is under test.
         Files.writeString(sessionFile(), """
-                {"sessionId":"session-44","createdAt":1,"lastModified":2,
+                {"sessionId":"session-44","createdAt":1,"lastModified":2,"project":"%s",
                  "openFiles":["Main.java"],
                  "cursorPositions":{"Main.java":42},
                  "currentCommand":"plan: do the thing",
@@ -105,7 +107,8 @@ public class SessionFileResilienceTest {
                  "conversationHistory":["User: hello","AI: hi"],
                  "todoList":[],
                  "transcript":[{"kind":"COMMAND","depth":0,"title":"ls src","status":"OK",
-                                "lines":["Main.java"]}]}""");
+                                "lines":["Main.java"]}]}"""
+                .formatted(ResumePoint.projectHere()));
 
         SessionManager manager = SessionManager.getInstance();
 
@@ -121,10 +124,11 @@ public class SessionFileResilienceTest {
         // The same promise one level down: a session's nested types outlive the code that wrote
         // them too, and refusing the document over one of them costs the whole conversation.
         Files.writeString(sessionFile(), """
-                {"sessionId":"session-45","createdAt":1,"lastModified":2,
+                {"sessionId":"session-45","createdAt":1,"lastModified":2,"project":"%s",
                  "conversationHistory":["User: hello"],
                  "transcript":[{"kind":"COMMAND","depth":0,"title":"grep TODO","status":"OK",
-                                "lines":["found 3"],"somethingNew":{"a":1}}]}""");
+                                "lines":["found 3"],"somethingNew":{"a":1}}]}"""
+                .formatted(ResumePoint.projectHere()));
 
         SessionManager manager = SessionManager.getInstance();
 
@@ -137,7 +141,8 @@ public class SessionFileResilienceTest {
     @Test
     public void aSessionMissingHalfItsFieldsLoadsWithEmptyCollectionsRatherThanNulls() throws Exception {
         Files.writeString(sessionFile(), """
-                {"sessionId":"session-43","createdAt":1}""");
+                {"sessionId":"session-43","createdAt":1,"project":"%s"}"""
+                .formatted(ResumePoint.projectHere()));
 
         SessionManager manager = SessionManager.getInstance();
 

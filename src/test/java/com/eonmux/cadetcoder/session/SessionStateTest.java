@@ -58,9 +58,11 @@ public class SessionStateTest {
             }
         }
 
+        // project is written when the session is created and read by the directory gate in
+        // SessionManager's load: a session is continued in the directory it was started in.
         assertThat(properties).containsExactlyInAnyOrder(
                 "sessionId", "createdAt", "lastModified",
-                "conversationHistory", "todoList", "transcript", "resumePoint");
+                "conversationHistory", "todoList", "transcript", "resumePoint", "project");
     }
 
     @Test

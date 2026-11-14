@@ -3,6 +3,7 @@ package com.eonmux.cadetcoder.session;
 import com.eonmux.cadetcoder.OutputFormatter;
 import com.eonmux.cadetcoder.ai.ContextWindow;
 import com.eonmux.cadetcoder.ai.metrics.TokenEstimator;
+import com.eonmux.cadetcoder.commands.CommandUsage;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -118,6 +119,8 @@ public class SessionManager {
                 OutputFormatter.printError("Failed to load session from " + sessionFilePath);
                 preserveUnreadableSession(sessionFile);
                 initializeDefaultSession();
+            } else if (!sessionState.isHere()) {
+                startInItsOwnDirectory();
             } else {
                 // Housekeeping, not news: this fired on EVERY command, so a one-line `ls` was
                 // bracketed by three lines about session bookkeeping the user never asked about.
@@ -127,6 +130,41 @@ public class SessionManager {
         } else {
             initializeDefaultSession();
         }
+    }
+
+    /**
+     * Puts the session left by another directory back in the archive and opens a new one here.
+     *
+     * <h2>Why the load answers the directory at all</h2>
+     *
+     * <p>{@code session.json} is one file under {@code baseDir}, shared by every directory the tool
+     * runs in. Left ungated, the first command in a second project continued the first project's
+     * conversation: its history went into the prompt, its resume point read as if it were here, and
+     * the new work accumulated on top of turns about files this directory does not have. A run the
+     * user asked to carry on says so with {@code --continue} or {@code --resume}, and
+     * {@link #loadSessionById(String)} opens what was named without asking where it came from. This
+     * load answers only the implicit question — "continue the session that was here" — and a session
+     * that was not here is not continued.</p>
+     *
+     * <p>The session being left is archived first, so nothing is lost: {@code --continue} and
+     * {@code session resume <id>} still reach it, and the next run in its own directory continues it
+     * from the archive exactly as before.</p>
+     */
+    private void startInItsOwnDirectory() {
+        String left = sessionState.getProject();
+        DebugLogger.getInstance().debug("SessionManager",
+                "The session in " + sessionFilePath + " was started in " + left
+                + "; starting a new one for " + ResumePoint.projectHere());
+        // The archive already holds this session in the usual case — every save archives it — so
+        // this rewrite is idempotent, and it keeps a session that predates the archive-on-save
+        // behaviour reachable by --resume.
+        archiveCurrentSession(false);
+        initializeDefaultSession();
+        persist();
+        OutputFormatter.printInfo("The previous session was started in " + left
+                                  + "; starting a new session for this directory. Reopen the old "
+                                  + "one with --continue or "
+                                  + CommandUsage.render("session resume <id>") + ".");
     }
 
     /**
@@ -196,6 +234,9 @@ public class SessionManager {
         sessionState.setConversationHistory(new ArrayList<>());
         sessionState.setTodoList(new ArrayList<>());
         sessionState.setTranscript(new ArrayList<>());
+        // The stamp is what a later run in another directory reads to leave this session alone. It
+        // is set here and never refreshed: a session belongs to the directory it was started in.
+        sessionState.setProject(ResumePoint.projectHere());
     }
 
     /**
@@ -346,8 +387,9 @@ public class SessionManager {
     /**
      * Closes the current session and opens an empty one.
      *
-     * <p>Every run continues whatever is in {@code session.json}, which is right for a tool invoked
-     * mostly one command at a time — and leaves no way to draw a line under a conversation. Without
+     * <p>Every run continues whatever is in {@code session.json} from the directory it was started
+     * in — see {@link #loadSession()} for the one gate on that — which is right for a tool invoked
+     * mostly one command at a time, and leaves no way to draw a line under a conversation. Without
      * one, a session accumulates for as long as the install lasts, and the quarter of the context
      * window a resume spends on history goes on turns from a different piece of work entirely.</p>
      *
@@ -477,9 +519,10 @@ public class SessionManager {
      * to restore rather than a file already trimmed to the smaller model's shape. Four times the
      * current model's restorable share covers that without being unbounded.</p>
      *
-     * <p>A bound is needed at all only because a session is never recreated — every run continues the
-     * one in {@code session.json}, and the whole file is rewritten on every save. Unbounded, that is
-     * unbounded disk and per-save work that grows with the age of the session.</p>
+     * <p>A bound is needed at all only because a session is not recreated within its directory —
+     * every run there continues the one in {@code session.json}, and the whole file is rewritten on
+     * every save. Unbounded, that is unbounded disk and per-save work that grows with the age of
+     * the session.</p>
      *
      * @return the character ceiling for the stored conversation
      */
@@ -571,6 +614,7 @@ public class SessionManager {
         snapshot.setTodoList(new ArrayList<>(sessionState.getTodoList()));
         snapshot.setTranscript(new ArrayList<>(sessionState.getTranscript()));
         snapshot.setResumePoint(sessionState.getResumePoint());
+        snapshot.setProject(sessionState.getProject());
         return snapshot;
     }
 
