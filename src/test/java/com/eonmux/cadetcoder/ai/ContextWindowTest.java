@@ -76,12 +76,26 @@ public class ContextWindowTest {
         assertThat(ContextWindow.tokens()).isNotEqualTo(completionLimit);
     }
 
+    /**
+     * A model reached through a gateway no catalog lists keeps the vendor's own window.
+     *
+     * <p>The chain: the pair is unknown, so the vendor named in the model id is asked, and the
+     * entry it answers with is the very entry a direct lookup of the same model reads -- which is
+     * why the two must come out equal whatever figure the catalog carries.</p>
+     *
+     * <p>{@code commandcode} stood in for the gateway here until models.dev started listing it;
+     * its own entry for {@code deepseek/deepseek-v4-flash} publishes the cap the gateway enforces,
+     * and that pair's word now wins over the vendor's, as the documented order of resolution says.
+     * The gateway below is spelled so that no catalog is expected to list it, which is the case
+     * this test has always been about.</p>
+     */
     @Test
     public void amodelReachedThroughAgatewayKeepsItsOwnWindow() {
         int direct = ContextWindow.publishedContext("deepseek", "deepseek-v4-flash");
         assertThat(direct).as("the catalog publishes this model's window").isGreaterThan(100_000);
 
-        assertThat(ContextWindow.publishedContext("commandcode", "deepseek/deepseek-v4-flash"))
+        assertThat(ContextWindow.publishedContext("no-catalog-lists-this-gateway",
+                                                  "deepseek/deepseek-v4-flash"))
                 .as("the same model, reached through a gateway the catalog has never heard of")
                 .isEqualTo(direct);
     }
