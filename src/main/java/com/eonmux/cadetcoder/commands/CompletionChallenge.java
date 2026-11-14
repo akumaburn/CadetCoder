@@ -84,15 +84,39 @@ final class CompletionChallenge {
     }
 
     /**
+     * Files the plan a reply states beside its action, once, while uber mode is on.
+     *
+     * <p>Called from the reply-handling steps, on the replies that proposed work. A claim of
+     * completion never files a plan -- refused here, not only at the callers -- because a plan
+     * stated at claim time is an account of what was already done, which is exactly the
+     * self-agreeing document the closing questions exist to distrust. What the run wrote before
+     * its first action is the only plan that was written while the request was still the thing
+     * being answered.</p>
+     *
+     * <p>Filed once and never refreshed -- see {@link ChatContext#setPlan} -- so the question at
+     * the end quotes the plan the run began with, and the run cannot answer to a different one.</p>
+     *
+     * @param context the run's context
+     * @param reply   the raw model reply
+     */
+    static void capturePlan(ChatContext context, String reply) {
+        if (!UberMode.isOn() || ChatActions.carriesSuccessMarker(reply)) {
+            return;
+        }
+        context.setPlan(ChatActions.planProse(reply));
+    }
+
+    /**
      * What the model is sent back with: the shared challenge, ending in the format this loop reads.
      *
-     * @param context the run's context, for the request it started from
+     * @param context the run's context, for the request it started from and the plan it filed
      * @param claim   what the model said when it declared the work finished
      * @param round   which question in the sequence this is, counting from 1
      * @return the prompt
      */
     private static String promptFor(ChatContext context, String claim, int round) {
-        return UberMode.challenge(round, context.getUserRequest(), claim, HOW_TO_FINISH);
+        return UberMode.challenge(round, context.getUserRequest(), claim, HOW_TO_FINISH,
+                                  context.getPlan());
     }
 
     /**

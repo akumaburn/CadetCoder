@@ -80,6 +80,30 @@ final class ChatActions {
     }
 
     /**
+     * The prose a reply carries beside its action, which is where a run states its plan.
+     *
+     * <p>The directive tells a run driven to the end to write its plan out before the first
+     * action, in the same reply as that action's block. Everything before the block is therefore
+     * the plan as the run filed it -- and capturing it there, once, is what lets a closing
+     * question quote it back instead of trusting the run to recall it at the moment it most wants
+     * to have written something else.</p>
+     *
+     * @param reply the raw model reply
+     * @return the prose before the action block, trimmed; empty when the reply is all action
+     */
+    static String planProse(String reply) {
+        if (reply == null) {
+            return "";
+        }
+        String text = withoutThinking(reply);
+        int block = text.indexOf("ACTION_START");
+        if (block >= 0) {
+            text = text.substring(0, block);
+        }
+        return text.strip();
+    }
+
+    /**
      * Whether the engine could not find a structured action and inferred one from prose.
      *
      * <p>Such a parse must never be executed: the fuzzy/semantic layer accepts any text and invents

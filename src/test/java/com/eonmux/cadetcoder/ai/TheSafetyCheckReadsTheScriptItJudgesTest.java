@@ -55,7 +55,7 @@ public class TheSafetyCheckReadsTheScriptItJudgesTest {
         configs = mockStatic(ConfigManager.class);
         configs.when(ConfigManager::getInstance).thenReturn(manager);
         model = mock(AIManager.class);
-        when(model.complete(any(PromptData.class))).thenReturn("ALLOW: it prints a greeting");
+        when(model.completeUnrecorded(any(PromptData.class))).thenReturn("ALLOW: it prints a greeting");
         managers = mockStatic(AIManager.class);
         managers.when(AIManager::getInstance).thenReturn(model);
         root = folder.getRoot().toPath();
@@ -74,7 +74,7 @@ public class TheSafetyCheckReadsTheScriptItJudgesTest {
     private PromptData asked(String command) {
         CommandApproval.judge(command, null, null);
         ArgumentCaptor<PromptData> request = ArgumentCaptor.forClass(PromptData.class);
-        verify(model).complete(request.capture());
+        verify(model).completeUnrecorded(request.capture());
         return request.getValue();
     }
 

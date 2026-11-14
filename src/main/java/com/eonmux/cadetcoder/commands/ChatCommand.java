@@ -256,6 +256,14 @@ public class ChatCommand extends LoggingCommandSupport implements IterativeComma
                     : ChatActions.runnable(parsedResponse, this);
             logDataProcessing("Parse actions", "AIAction", actions.size(), System.currentTimeMillis() - aiStartTime);
 
+            // The plan is filed here, on the first reply that proposed work, or never: what a run
+            // wrote beside its first action is the only plan written while the request was the
+            // thing being answered, and the closing questions quote it back verbatim. See
+            // CompletionChallenge#capturePlan.
+            if (!actions.isEmpty()) {
+                CompletionChallenge.capturePlan(context, aiResponse);
+            }
+
             // Log parsing details for debugging
             logDebug("Parsing Details", String.format("Strategy: %s, Confidence: %.2f, Result: %s",
                 parsedResponse.getStrategyUsed(), parsedResponse.getConfidence(), parsedResponse.getResult()));

@@ -89,7 +89,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
     @Test
     void inAutoModeTheEditIsAppliedWhenTheModelAgrees() throws Exception {
         System.setProperty(CommandApproval.PROPERTY, "auto");
-        when(model.complete(any(PromptData.class)))
+        when(model.completeUnrecorded(any(PromptData.class)))
                 .thenReturn("ANSWER: yes\nBECAUSE: the preview changes one value as asked.");
 
         assertThat(editByTheModel()).isZero();
@@ -107,7 +107,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
         String longLine = "value = 30 // " + "a comment that runs well past fifty characters ".repeat(3);
         Files.writeString(file, "# Guide\n\n" + longLine + "\n");
         ReadBeforeEdit.sawContents(file);
-        when(model.complete(any(PromptData.class)))
+        when(model.completeUnrecorded(any(PromptData.class)))
                 .thenReturn("ANSWER: yes\nBECAUSE: the change is shown whole.");
 
         int exit = ModelDispatch.run("multiedit", () -> new MultiEditCommand().execute(new String[] {
@@ -116,7 +116,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
 
         assertThat(exit).isZero();
         ArgumentCaptor<PromptData> asked = ArgumentCaptor.forClass(PromptData.class);
-        verify(model).complete(asked.capture());
+        verify(model).completeUnrecorded(asked.capture());
         assertThat(asked.getValue().getUserPrompt())
                 .contains("-" + longLine)
                 .contains("+value = 45")
@@ -126,7 +126,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
     @Test
     void inAutoModeTheEditIsNotAppliedWhenTheModelRefuses() throws Exception {
         System.setProperty(CommandApproval.PROPERTY, "auto");
-        when(model.complete(any(PromptData.class)))
+        when(model.completeUnrecorded(any(PromptData.class)))
                 .thenReturn("ANSWER: no\nBECAUSE: the change is not what was asked for.");
 
         assertThat(editByTheModel()).isNotZero();
@@ -140,7 +140,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
     @Test
     void anAnswerThatCannotBeReadDeclines() throws Exception {
         System.setProperty(CommandApproval.PROPERTY, "auto");
-        when(model.complete(any(PromptData.class))).thenReturn("Sure, looks fine to me!");
+        when(model.completeUnrecorded(any(PromptData.class))).thenReturn("Sure, looks fine to me!");
 
         assertThat(editByTheModel()).isNotZero();
 
@@ -153,13 +153,13 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
 
         editByTheModel();
 
-        verify(model, never()).complete(any(PromptData.class));
+        verify(model, never()).completeUnrecorded(any(PromptData.class));
     }
 
     @Test
     void inAutoModeAnOverwriteIsPutToTheModelWithWhatItReplaces() throws Exception {
         System.setProperty(CommandApproval.PROPERTY, "auto");
-        when(model.complete(any(PromptData.class)))
+        when(model.completeUnrecorded(any(PromptData.class)))
                 .thenReturn("ANSWER: yes\nBECAUSE: the file was read and is being rewritten.");
         int[] exit = new int[1];
 
@@ -170,7 +170,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
         assertThat(Files.readString(file)).isEqualTo("new text");
         assertThat(transcript).anySatisfy(line -> assertThat(line).contains("Answered by the model"));
         ArgumentCaptor<PromptData> asked = ArgumentCaptor.forClass(PromptData.class);
-        verify(model).complete(asked.capture());
+        verify(model).completeUnrecorded(asked.capture());
         assertThat(asked.getValue().getUserPrompt()).contains(file.toString());
     }
 
@@ -184,7 +184,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
 
         assertThat(exit[0]).isNotZero();
         assertThat(Files.readString(file)).contains("value = 30");
-        verify(model, never()).complete(any(PromptData.class));
+        verify(model, never()).completeUnrecorded(any(PromptData.class));
     }
 
     @Test
@@ -196,7 +196,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
                 "EDIT_START\nOLD: value = 31\nNEW: value = 45\nREPLACE_ALL: false\nEDIT_END"}));
 
         assertThat(exit).isNotZero();
-        verify(model, never()).complete(any(PromptData.class));
+        verify(model, never()).completeUnrecorded(any(PromptData.class));
         assertThat(output.getAllOutput()).contains("No edits were applied");
     }
 
@@ -207,7 +207,7 @@ class AquestionInAmodelsStepIsPutToTheModelTest {
                               "value", "=", "45", "EDIT_END"}));
 
         assertThat(exit).isNotZero();
-        verify(model, never()).complete(any(PromptData.class));
+        verify(model, never()).completeUnrecorded(any(PromptData.class));
         verify(model, never()).complete(any(PromptData.class), any());
         assertThat(output.getAllOutput()).contains("own line").contains("ARGS_BEGIN");
         assertThat(Files.readString(file)).contains("value = 30");

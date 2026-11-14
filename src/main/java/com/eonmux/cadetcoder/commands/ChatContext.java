@@ -70,6 +70,23 @@ public class ChatContext {
     private int uberChecksPassed;
 
     /**
+     * The plan this run filed, verbatim, before any work.
+     *
+     * <p>Captured from the prose of the first reply that proposed an action, and never refreshed:
+     * the plan is what the run declared it was setting out to do while the request was still fresh,
+     * and it is the standard every closing question holds the work against. Left only in the
+     * transcript, it drifted -- a run questioned at its end reconstructed "the plan" from whatever
+     * its exploration had turned up, added the reconstruction as items, and was compelled by the
+     * question's own rule to go and do them. Quoted back verbatim, the plan is the scope contract
+     * instead of a recollection.</p>
+     *
+     * <p>Carried through {@link #toMap()} for the reason {@link #uberChecksPassed} is: held only as
+     * a field it would be gone at the very step that needs it, since a fresh context is rebuilt on
+     * every step.</p>
+     */
+    private String plan;
+
+    /**
      * The ids of the running jobs this run has been asked about when it said it was done.
      *
      * <p>Carried through {@link #toMap()} for the reason {@link #uberChecksPassed} is: held only as
@@ -212,6 +229,23 @@ public class ChatContext {
         this.uberChecksPassed = Math.max(0, uberChecksPassed);
     }
 
+    /** @return the plan this run filed before any work, or {@code null} when it filed none */
+    public String getPlan() {
+        return plan;
+    }
+
+    /**
+     * Files the run's plan, once.
+     *
+     * @param plan the plan as the run stated it; a later filing is ignored, because a plan that
+     *             can be replaced at claim time is not a plan, it is a rationalisation
+     */
+    public void setPlan(String plan) {
+        if (this.plan == null && plan != null && !plan.isBlank()) {
+            this.plan = plan.strip();
+        }
+    }
+
     /** @return the ids of the running jobs this run has been asked about when it said it was done */
     public List<String> getJobsAskedAbout() {
         return jobsAskedAbout;
@@ -303,6 +337,9 @@ public class ChatContext {
         map.put("actionRetryCount", actionRetryCount);
         map.put("refusedActionCount", refusedActionCount);
         map.put("uberChecksPassed", uberChecksPassed);
+        if (plan != null) {
+            map.put("plan", plan);
+        }
         map.put(JobsLeftRunning.ASKED_KEY, jobsAskedAbout);
         if (actionHistory != null) {
             map.put("actionHistory", actionHistory);
@@ -361,6 +398,7 @@ public class ChatContext {
                 count(map, "refusedActionCount", log, context.getRefusedActionCount()));
         context.setUberChecksPassed(
                 count(map, "uberChecksPassed", log, context.getUberChecksPassed()));
+        context.setPlan(text(map, "plan", log, context.getPlan()));
 
         context.setCurrentAction(action(map, "currentAction", log, context.getCurrentAction()));
         context.setFailedAction(action(map, "failedAction", log, context.getFailedAction()));

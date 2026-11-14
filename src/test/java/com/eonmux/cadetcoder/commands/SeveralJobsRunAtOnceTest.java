@@ -45,7 +45,7 @@ class SeveralJobsRunAtOnceTest {
         JobRegistry.clear();
         System.setProperty(CommandApproval.PROPERTY, "auto");
         AIManager model = mock(AIManager.class);
-        when(model.complete(any(PromptData.class))).thenReturn("ALLOW: it only sleeps.");
+        when(model.completeUnrecorded(any(PromptData.class))).thenReturn("ALLOW: it only sleeps.");
         managers = mockStatic(AIManager.class);
         managers.when(AIManager::getInstance).thenReturn(model);
         output = new TestOutputCapture();

@@ -381,6 +381,18 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         context.remove("uberChallenge");
         context.remove(JOBS_QUESTION);
 
+        // The plan the run filed before any work, captured once: the closing questions quote it
+        // back verbatim instead of trusting the run to recall it, because a plan asked for from
+        // memory is rebuilt out of whatever the exploration turned up. A completion claim files
+        // nothing -- a plan stated at claim time is an account of what was already done.
+        if (UberMode.isOn() && !action.command.equals("complete")
+            && context.get("plan") == null) {
+            String prose = ChatActions.planProse(reply);
+            if (!prose.isBlank()) {
+                context.put("plan", prose);
+            }
+        }
+
         if (action.command.equals("complete")) {
             if (questionedCompletion(state, context, action.result)) {
                 return null;
@@ -423,7 +435,8 @@ public class AgentCommand extends LoggingCommandSupport implements IterativeComm
         context.put("uberChecksPassed", round);
         context.put("uberChallenge",
                     UberMode.challenge(round, state == null ? null : state.getTask(), claim,
-                                       FINISH_THE_AGENT_WAY));
+                                       FINISH_THE_AGENT_WAY,
+                                       context.get("plan") instanceof String filed ? filed : null));
         OutputFormatter.printInfo("Checking the claim that this is finished (" + round + " of "
                                   + UberMode.questionCount() + "). "
                                   + CommandUsage.prefix() + "ubermode off stops this.");

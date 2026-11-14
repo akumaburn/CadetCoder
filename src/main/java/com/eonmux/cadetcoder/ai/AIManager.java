@@ -94,6 +94,56 @@ public class AIManager {
     }
 
     /**
+     * Completes a prompt whose answer is this tool's own bookkeeping, not the conversation.
+     *
+     * <p>The safety gate and the stand-in answerer ask the model questions of their own, and both
+     * were answered through the ordinary path -- which files every response into the session
+     * conversation as a turn of the model it is not about. One real session carried ten such
+     * verdicts among sixty-one entries, indistinguishable from things its model had said, and a
+     * resumed run was handed them as its own prior words. What a judge replied about one command's
+     * safety is nobody's conversational history.</p>
+     *
+     * <p>Everything else about the call is the ordinary path -- the retries, the composed prompts,
+     * the measurement and the typed failures -- because a second policy for internal questions
+     * would make them unaccountable the same way a second client would.</p>
+     *
+     * @param promptData the prompt to complete
+     * @return the AI model's response, never null and never blank
+     * @throws IllegalStateException when no AI client is available at all
+     * @throws LLMException          when the completion call failed
+     */
+    public String completeUnrecorded(PromptData promptData) {
+        return completeUnrecorded(null, promptData);
+    }
+
+    /**
+     * The unrecorded completion, through a model of the caller's choosing.
+     *
+     * @param client     what to ask; {@code null} asks whichever model this tool is connected to
+     * @param promptData the prompt to complete
+     * @return the AI model's response, never null and never blank
+     * @throws IllegalStateException when no client is named and none is available
+     * @throws LLMException          when the completion call failed
+     */
+    public String completeUnrecorded(AIClient client, PromptData promptData) {
+        HISTORY_RECORDING_SUPPRESSED.set(Boolean.TRUE);
+        try {
+            return completeMeasured(client, promptData, new HashMap<>()).text();
+        } finally {
+            HISTORY_RECORDING_SUPPRESSED.remove();
+        }
+    }
+
+    /**
+     * Whether the completion answering now is kept out of the session conversation.
+     *
+     * <p>Thread-scoped, like the model-driven mark: a judge answering on a worker's thread must
+     * not silence recording for the conversation model answering on another.</p>
+     */
+    private static final ThreadLocal<Boolean> HISTORY_RECORDING_SUPPRESSED =
+            new ThreadLocal<>();
+
+    /**
      * Completes a prompt using the active AI client with lightweight validation.
      *
      * <p>Returns only what the model actually said. Any failure of the underlying call — transport,
@@ -298,10 +348,18 @@ public class AIManager {
                     // backend error string here polluted the context of every following turn with
                     // text the model never produced.
                     if (!isErrorText(response)) {
-                        // Marked as the model's turn so a restored conversation reads as one. The
-                        // user's half is recorded by the command that knows the actual request; at
-                        // this layer the "user prompt" is the whole rendered transcript.
-                        SessionManager.getInstance().addToConversationHistory("AI: " + response);
+                        // And only the conversation's own model is recorded at all: the safety
+                        // gate and the stand-in answerer are model calls too, and their verdicts
+                        // were recorded as turns of the conversation they were judging -- ten of
+                        // the sixty-one entries of one real session were "ALLOW: ..." lines its
+                        // model never said. See completeUnrecorded, which is how those callers
+                        // ask.
+                        if (!Boolean.TRUE.equals(HISTORY_RECORDING_SUPPRESSED.get())) {
+                            // Marked as the model's turn so a restored conversation reads as one. The
+                            // user's half is recorded by the command that knows the actual request; at
+                            // this layer the "user prompt" is the whole rendered transcript.
+                            SessionManager.getInstance().addToConversationHistory("AI: " + response);
+                        }
                     }
                     // Provider-reported counts win over the estimate whenever the backend
                     // parsed a usage block; see TokenUsage for why the arithmetic differs per

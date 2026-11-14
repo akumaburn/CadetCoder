@@ -76,8 +76,10 @@ public final class StandInAnswer {
         String reply;
         try {
             // Asked outside the step's capture, as CommandApproval asks: what this request cost is
-            // the tool's bookkeeping, not output of the command being answered for.
-            reply = OutputCapture.outsideCapture(() -> AIManager.getInstance().complete(
+            // the tool's bookkeeping, not output of the command being answered for. Unrecorded for
+            // the same reason: an answer given on the user's behalf is not a turn of the run that
+            // needed it.
+            reply = OutputCapture.outsideCapture(() -> AIManager.getInstance().completeUnrecorded(
                     new PromptData(systemPrompt(), userPrompt(question, context, yesOrNo))));
         } catch (RuntimeException failed) {
             DebugLogger.getInstance().warn("StandInAnswer",

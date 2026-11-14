@@ -31,8 +31,7 @@ class AcommandRunAsAprogramIsPointedAtItsOwnActionTest {
     void setUp() throws Exception {
         System.setProperty(CommandApproval.PROPERTY, "auto");
         AIManager model = mock(AIManager.class);
-        when(model.complete(any(PromptData.class))).thenReturn("ALLOW: it only lists jobs.");
-        when(model.complete(any(PromptData.class), any())).thenReturn("ALLOW: it only lists jobs.");
+        when(model.completeUnrecorded(any(PromptData.class))).thenReturn("ALLOW: it only lists jobs.");
         managers = mockStatic(AIManager.class);
         managers.when(AIManager::getInstance).thenReturn(model);
         output = new TestOutputCapture();

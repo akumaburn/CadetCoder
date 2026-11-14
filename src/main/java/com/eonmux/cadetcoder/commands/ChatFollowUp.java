@@ -82,6 +82,9 @@ final class ChatFollowUp {
 
         List<ChatCommand.AIAction> actions = actionsIn(parsed);
         if (!actions.isEmpty()) {
+            // See CompletionChallenge#capturePlan: filed once, on the first reply that proposed
+            // work, so a closing question quotes the plan the run began with.
+            CompletionChallenge.capturePlan(context, llmResponse);
             RefusedAction.noteAnActionRan(context);
             context.setCurrentAction(actions.get(0));
             context.setStep("execute_single_action");
@@ -129,6 +132,9 @@ final class ChatFollowUp {
         List<ChatCommand.AIAction> actions = actionsIn(parsed);
         if (!actions.isEmpty()) {
             context.setFormatRetryCount(0);
+            // A corrected reply that proposed work files the plan the same as any other first
+            // action; see CompletionChallenge#capturePlan.
+            CompletionChallenge.capturePlan(context, llmResponse);
             RefusedAction.noteAnActionRan(context);
             context.setCurrentAction(actions.get(0));
             context.setStep("execute_single_action");

@@ -120,8 +120,9 @@ public final class CommandApproval {
         try {
             // Asked outside the step's output capture, like the person is. What this request cost
             // is the tool's own bookkeeping; collected, it would be handed to the model in the next
-            // prompt as though the command being screened had printed it.
-            reply = OutputCapture.outsideCapture(() -> AIManager.getInstance().complete(
+            // prompt as though the command being screened had printed it. Unrecorded, for the same
+            // reason: a verdict about one command is not a turn of the conversation it screened.
+            reply = OutputCapture.outsideCapture(() -> AIManager.getInstance().completeUnrecorded(
                     new PromptData(systemPrompt(), userPrompt(command, description, concern))));
         } catch (RuntimeException failed) {
             DebugLogger.getInstance().warn("CommandApproval",

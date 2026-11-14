@@ -68,7 +68,9 @@ public final class UberMode {
             + "request into -- the one listing every separate thing it asked for, explicit and "
             + "implied. If you never made one, make it now, before answering anything else. Then "
             + "account for EVERY item of that plan, one by one: is it done and verified, partly "
-            + "done, not started, or only described? Where this project has a way of being checked "
+            + "done, not started, or only described? The plan is the scope of this run: what the "
+            + "work uncovered along the way that the plan does not name is a finding to report in "
+            + "the answer, not work to start. Where this project has a way of being checked "
             + "(its build, its tests, its linter), run it now rather than reasoning about whether "
             + "it would pass. An item partly done is not done, an item described is not done, and "
             + "stopping with items outstanding is an early exit, not a completion. If anything is "
@@ -177,9 +179,40 @@ public final class UberMode {
      * @return the prompt
      */
     public static String challenge(int round, String request, String claim, String howToFinish) {
+        return challenge(round, request, claim, howToFinish, null);
+    }
+
+    /**
+     * The same challenge, with the plan the run filed carried into it.
+     *
+     * <h2>Why the plan travels with the question</h2>
+     *
+     * <p>The question asks for an account of every item of the plan, and the only copy of that
+     * plan used to live in the transcript -- rewritten by compaction as a run grows, and in any
+     * case however many turns back memory reaches. Asked to account for a plan it could not see, a
+     * run reconstructed one from what its exploration had turned up, and the reconstruction
+     * became the work: one real session spent its whole remainder reconciling documentation a
+     * plan item it had just then invented. Quoted verbatim from what the run filed before its
+     * first action, the plan is the scope contract rather than a recollection the question
+     * invites.</p>
+     *
+     * @param round       which question in the sequence this is, counting from 1
+     * @param request     what the run was asked for, if it is known
+     * @param claim       what the model said when it declared the work finished
+     * @param howToFinish what the model should answer instead if the claim does hold
+     * @param plan        the plan the run filed before any work, or {@code null} when it filed none
+     * @return the prompt
+     */
+    public static String challenge(int round, String request, String claim, String howToFinish,
+                                   String plan) {
         StringBuilder prompt = new StringBuilder();
         if (request != null && !request.isBlank()) {
             prompt.append("The request was: ").append(request.strip()).append("\n\n");
+        }
+        if (plan != null && !plan.isBlank()) {
+            prompt.append("The plan this run filed before any work, which its finish is judged "
+                          + "against, was:\n")
+                  .append(plan.strip()).append("\n\n");
         }
         if (claim != null && !claim.isBlank()) {
             prompt.append("You have just said this run is finished:\n")
