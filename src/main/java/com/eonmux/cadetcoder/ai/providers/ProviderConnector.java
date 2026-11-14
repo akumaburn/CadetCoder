@@ -33,7 +33,8 @@ public final class ProviderConnector {
     private final DataRetentionControl retention;
     private final boolean             modelsListedLive;
     private final List<String>        relatedCatalogIds;
-    private final String              sessionHeaderName;
+    private final List<String>        sessionHeaderNames;
+    private final Map<ConnectorProtocol, String> protocolBaseUrls;
 
     public ProviderConnector(String id,
                              String displayName,
@@ -77,7 +78,7 @@ public final class ProviderConnector {
                              ModelWire wire,
                              DataRetentionControl retention) {
         this(id, displayName, env, defaultBaseUrl, authScheme, protocol, staticHeaders, wire,
-             retention, false, List.of(), null);
+             retention, false, List.of(), null, null);
     }
 
     private ProviderConnector(String id,
@@ -91,7 +92,8 @@ public final class ProviderConnector {
                               DataRetentionControl retention,
                               boolean modelsListedLive,
                               List<String> relatedCatalogIds,
-                              String sessionHeaderName) {
+                              List<String> sessionHeaderNames,
+                              Map<ConnectorProtocol, String> protocolBaseUrls) {
         this.id             = id;
         this.displayName    = displayName;
         this.env            = env != null ? env : List.of();
@@ -103,7 +105,8 @@ public final class ProviderConnector {
         this.retention      = retention != null ? retention : DataRetentionControl.none();
         this.modelsListedLive  = modelsListedLive;
         this.relatedCatalogIds = relatedCatalogIds != null ? List.copyOf(relatedCatalogIds) : List.of();
-        this.sessionHeaderName = sessionHeaderName;
+        this.sessionHeaderNames = sessionHeaderNames != null ? List.copyOf(sessionHeaderNames) : List.of();
+        this.protocolBaseUrls  = protocolBaseUrls != null ? Map.copyOf(protocolBaseUrls) : Map.of();
     }
 
     /**
@@ -127,36 +130,99 @@ public final class ProviderConnector {
     public ProviderConnector listingModelsLive(List<String> related) {
         return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
                                      staticHeaders, wire, retention, true, related,
-                                     sessionHeaderName);
+                                     sessionHeaderNames, protocolBaseUrls);
     }
 
     /**
-     * This connector, carrying the conversation's session id on every completion.
+     * This connector, deciding which protocol to speak per model with the given wire.
+     *
+     * <p>For a gateway whose models do not all answer on one: the wire names the protocol for
+     * each model id, and {@link #withProtocolBaseUrls(Map)} can name the endpoint per protocol
+     * when they are not all served at one root. See {@link OpencodeGatewayWire} for the case that
+     * needs both.</p>
+     *
+     * @param wire the per-model protocol choice
+     * @return a copy of this connector speaking through the wire
+     */
+    public ProviderConnector withModelWire(ModelWire wire) {
+        return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
+                                     staticHeaders, wire, retention, modelsListedLive,
+                                     relatedCatalogIds, sessionHeaderNames, protocolBaseUrls);
+    }
+
+    /**
+     * This connector, carrying the conversation's session id on every completion under each of the
+     * named headers.
      *
      * <h2>Why a gateway would ask</h2>
      *
-     * <p>OpenCode Go routes by conversation and primes its prompt cache along the same line: a
-     * client that sends a stable identifier per conversation gets its requests kept together, and
-     * one that does not is refused outright with {@code MissingSessionID}. The header is not a
-     * static property of the connector -- its value is the id of the conversation the request
-     * belongs to -- so it is merged at backend build time, from the session this process is
-     * running, rather than filed beside the connector's fixed headers.</p>
+     * <p>OpenCode's gateways route by conversation and prime their prompt cache along the same
+     * line: a client that sends a stable identifier per conversation gets its requests kept
+     * together, and one that does not is refused outright with {@code MissingSessionID}. The
+     * headers are not static properties of the connector -- their value is the id of the
+     * conversation the request belongs to -- so they are merged at backend build time, from the
+     * session this process is running, rather than filed beside the connector's fixed headers.</p>
      *
-     * @param headerName the header to carry the session id in, as {@code x-opencode-session}
-     * @return a copy of this connector that sends the header
+     * <h2>Why there is more than one name</h2>
+     *
+     * <p>OpenCode's own client sends the same conversation id under four names -- {@code
+     * x-opencode-session}, {@code x-opencode-session-id}, {@code x-session-affinity} and {@code
+     * X-Session-Id} -- distinguished in its data model (its own session id, the subagent parent's
+     * id, and the cache affinity) but carrying one value for a client with a single conversation
+     * per run, as this tool has. Sending all four is what its gateway is tested against.</p>
+     *
+     * @param headerNames the headers to carry the session id in, as {@code x-opencode-session}
+     * @return a copy of this connector that sends the headers
      */
-    public ProviderConnector withSessionHeader(String headerName) {
+    public ProviderConnector withSessionHeaders(List<String> headerNames) {
         return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
                                      staticHeaders, wire, retention, modelsListedLive,
-                                     relatedCatalogIds, headerName);
+                                     relatedCatalogIds, headerNames, protocolBaseUrls);
+    }
+
+    /** As {@link #withSessionHeaders(List)}, for a connector that asks for one. */
+    public ProviderConnector withSessionHeader(String headerName) {
+        return headerName == null ? this : withSessionHeaders(List.of(headerName));
     }
 
     /**
-     * @return the header that carries the conversation's session id on every completion, or
-     *         {@code null} when this connector asks for none
+     * This connector, answering on a different endpoint per protocol.
+     *
+     * <h2>Why a gateway would split its hosts</h2>
+     *
+     * <p>OpenCode's gateways partition their models by protocol across distinct paths: the Claude
+     * families answer on an Anthropic Messages endpoint, the Gemini families on a Google
+     * endpoint, and the rest on an OpenAI-compatible one. Each model answers on exactly one of
+     * them, so a connector serving more than one protocol needs a base URL per protocol, not one
+     * URL for everything. A model whose protocol has no entry here, and every connector without
+     * this map, uses {@link #getDefaultBaseUrl()}.</p>
+     *
+     * @param baseUrls the endpoint to call per protocol
+     * @return a copy of this connector with the per-protocol endpoints
      */
-    public String getSessionHeaderName() {
-        return sessionHeaderName;
+    public ProviderConnector withProtocolBaseUrls(Map<ConnectorProtocol, String> baseUrls) {
+        return new ProviderConnector(id, displayName, env, defaultBaseUrl, authScheme, protocol,
+                                     staticHeaders, wire, retention, modelsListedLive,
+                                     relatedCatalogIds, sessionHeaderNames, baseUrls);
+    }
+
+    /**
+     * The endpoint to call when speaking a particular protocol, when that differs from the
+     * connector's default.
+     *
+     * @param protocol the protocol about to be spoken
+     * @return the base URL for it, or {@code null} for the connector's default
+     */
+    public String baseUrlFor(ConnectorProtocol protocol) {
+        return protocolBaseUrls.get(protocol);
+    }
+
+    /**
+     * @return the headers that carry the conversation's session id on every completion; empty
+     *         when this connector asks for none
+     */
+    public List<String> getSessionHeaderNames() {
+        return sessionHeaderNames;
     }
 
     /**
@@ -254,18 +320,26 @@ public final class ProviderConnector {
     public LLMBackend createBackend(String model, String apiKey, Map<String, String> options,
                                     boolean zeroDataRetention) {
         Map<String, String> opts = options != null ? options : Map.of();
-        String base = firstNonBlank(opts.get("baseURL"), defaultBaseUrl);
+        // The protocol decides the endpoint, not the other way round: a gateway whose models are
+        // partitioned by protocol calls each family on its own path, so the base is resolved after
+        // the wire has spoken. An option the user set wins over everything.
+        ConnectorProtocol spoke = protocolFor(model);
+        String base = firstNonBlank(opts.get("baseURL"), baseUrlFor(spoke), defaultBaseUrl);
         Map<String, String> headers = headersFor(zeroDataRetention);
         Map<String, Object> extraBody = bodyFor(zeroDataRetention);
 
-        switch (protocolFor(model)) {
+        switch (spoke) {
             case ANTHROPIC_MESSAGES:
                 // authScheme too: this wire serves gateways as well as Anthropic itself, and a
                 // gateway reselling claude-* may authenticate the way the rest of its API does.
                 return new AnthropicBackend(model, base, apiKey, id, headers, extraBody, authScheme);
 
             case GOOGLE_GENERATIVE_AI:
-                return new GoogleGenerativeAIBackend(model, base, apiKey);
+                // headers and authScheme as on the Anthropic wire: a gateway serving Gemini reads
+                // the credential the way it reads it everywhere else, and the same session
+                // identification rides along. Anthropic's own connector sends neither, and the
+                // headers map is empty for it.
+                return new GoogleGenerativeAIBackend(model, base, apiKey, authScheme, headers);
 
             case BEDROCK_CONVERSE: {
                 String region = firstNonBlank(opts.get("region"), System.getenv("AWS_REGION"), "us-east-1");
@@ -282,7 +356,10 @@ public final class ProviderConnector {
                     if (isBlank(resolvedBase) && resourceName != null && !resourceName.isBlank()) {
                         resolvedBase = "https://" + resourceName + ".openai.azure.com/openai/v1";
                     }
-                    query.put("api-version", firstNonBlank(opts.get("apiVersion"), "2024-06-01"));
+                    // "v1" is the api-version OpenAI's current client generation sends and the one
+                    // opencode's Azure connector defaults to; the older calendar versions answer on
+                    // the previous deployment-shaped paths.
+                    query.put("api-version", firstNonBlank(opts.get("apiVersion"), "v1"));
                 } else if ("cloudflare-ai-gateway".equals(id) && isBlank(resolvedBase)) {
                     // Both parts required, exactly as azure requires its resourceName above. With
                     // the ids defaulted to "" this produced
@@ -310,20 +387,17 @@ public final class ProviderConnector {
     }
 
     /**
-     * The headers a request carries: the connector's own, plus the ones that refuse retention.
+     * The headers a completion from this connector carries, merged in the order that decides
+     * which word wins when two sources name the same header: the connector's own static headers,
+     * then the client identification, then the retention preference, then the session. Package
+     * visible because the merge order is a contract the gateway tests hold.
      *
      * <p>A new map per call rather than one held on the connector, because the preference can differ
      * between two backends built from the same connector -- a run may deliberately turn it off for
      * one model whose upstream will not agree to it.</p>
      *
-     * @param zeroDataRetention whether to add the refusal
+     * @param zeroDataRetention whether to add the retention refusal
      * @return the headers to send, never null
-     */
-    /**
-     * The headers a completion from this connector carries, merged in the order that decides
-     * which word wins when two sources name the same header: the connector's own static headers,
-     * then the client identification, then the retention preference, then the session. Package
-     * visible because the merge order is a contract the gateway tests hold.
      */
     Map<String, String> headersFor(boolean zeroDataRetention) {
         Map<String, String> merged = new LinkedHashMap<>(staticHeaders);
@@ -333,19 +407,14 @@ public final class ProviderConnector {
         if (zeroDataRetention && !retention.headers().isEmpty()) {
             merged.putAll(retention.headers());
         }
-        if (sessionHeaderName != null) {
-            merged.put(sessionHeaderName, SessionManager.getInstance().getCurrentSessionId());
+        // Every name the connector asked for carries the same value: this process's one
+        // conversation id, which is what routing and prompt caching key on.
+        for (String headerName : sessionHeaderNames) {
+            merged.put(headerName, SessionManager.getInstance().getCurrentSessionId());
         }
         return merged;
     }
 
-    /**
-     * The request-body fields a backend should merge in, for a provider that reads the body rather
-     * than a header.
-     *
-     * @param zeroDataRetention whether the user asked for it
-     * @return the fields, empty when nothing is to be asked
-     */
     /**
      * The request-body fields this connector needs, given the preference in force.
      *

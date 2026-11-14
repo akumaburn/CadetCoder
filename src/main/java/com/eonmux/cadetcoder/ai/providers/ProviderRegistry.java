@@ -137,20 +137,47 @@ public final class ProviderRegistry {
                 "https://api.githubcopilot.com", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT,
                 Map.of("Editor-Version", "CadetCoder/1.0", "Copilot-Integration-Id", "vscode-chat"));
 
-        // opencode Zen gateways: opencode's hosted, OpenAI-compatible model gateway. Both speak
-        // the OpenAI Chat Completions protocol with a Bearer OPENCODE_API_KEY obtained from
-        // https://opencode.ai/docs/zen, so a single login/key authenticates either gateway. These
-        // are listed in the models.dev catalog (providers "opencode" and "opencode-go"); without a
-        // registered connector here, neither could be selected via `login`/`models`.
+        // OpenCode's gateways: opencode's hosted model gateways, "Zen" for the open catalog and
+        // "Go" for its subscription plans. Both authenticate any route with one key -- Bearer
+        // OPENCODE_API_KEY from https://opencode.ai/console -- and partition their models by
+        // protocol across distinct paths: the Chat Completions endpoint for most models, an
+        // Anthropic Messages endpoint for the Claude (and a few Qwen/MiniMax) families, and a
+        // Google endpoint for Gemini. OpencodeGatewayWire decides the path per model; the catalog
+        // at models.dev (providers "opencode" and "opencode-go") describes the models.
         //
-        // Go refuses a completion that names no conversation -- HTTP 400 MissingSessionID -- and
-        // asks for a stable session id per conversation in x-opencode-session, which is what the
-        // session id CadetCoder already keeps is for. Zen asks for no such header and gets none.
-        add("opencode", "OpenCode Zen", List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/v1", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT, null);
-        register(new ProviderConnector("opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER, ConnectorProtocol.OPENAI_CHAT,
-                null).withSessionHeader("x-opencode-session"));
+        // The client contract their gateway checks: every request names its conversation with a
+        // stable session id, and names its client. A request without the session id is refused
+        // outright with HTTP 400 MissingSessionID. OpenCode's own client sends the conversation id
+        // under four names distinguished in its data model but carrying one value for a client
+        // with a single conversation per run, as this tool has; those four ride on every
+        // completion and on the model listing. x-opencode-client is the fixed client name;
+        // x-opencode-project OpenCode also sends, but its value is OpenCode's own project id,
+        // which this tool does not have -- sending the workspace path in its place would leak
+        // local paths to the gateway for no routing benefit, so it is not sent.
+        register(new ProviderConnector(OpencodeGatewayWire.GO_ID, "OpenCode Go",
+                List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/inference/go/openai/v1", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, Map.of("x-opencode-client", "cadet"))
+                .withModelWire(new OpencodeGatewayWire())
+                .withProtocolBaseUrls(Map.of(
+                        ConnectorProtocol.ANTHROPIC_MESSAGES,
+                                "https://opencode.ai/inference/go/anthropic/v1",
+                        ConnectorProtocol.GOOGLE_GENERATIVE_AI,
+                                "https://opencode.ai/inference/go/google/v1beta"))
+                .withSessionHeaders(List.of("x-opencode-session", "x-opencode-session-id",
+                                            "x-session-affinity", "X-Session-Id")));
+        register(new ProviderConnector(OpencodeGatewayWire.ZEN_ID, "OpenCode Zen",
+                List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/inference/openai/v1", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, Map.of("x-opencode-client", "cadet"))
+                .withModelWire(new OpencodeGatewayWire())
+                .withProtocolBaseUrls(Map.of(
+                        ConnectorProtocol.ANTHROPIC_MESSAGES,
+                                "https://opencode.ai/inference/anthropic/v1",
+                        ConnectorProtocol.GOOGLE_GENERATIVE_AI,
+                                "https://opencode.ai/inference/google/v1beta"))
+                .withSessionHeaders(List.of("x-opencode-session", "x-opencode-session-id",
+                                            "x-session-affinity", "X-Session-Id")));
 
         // Command Code's Provider API: one hosted gateway in front of the Anthropic, OpenAI,
         // DeepSeek, Qwen, GLM and Gemini families, reached with the same key that authenticates

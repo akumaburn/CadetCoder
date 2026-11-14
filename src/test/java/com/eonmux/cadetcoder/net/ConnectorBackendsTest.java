@@ -132,6 +132,26 @@ public class ConnectorBackendsTest {
         assertThat(lastBody).contains("\"generationConfig\"");
     }
 
+    /**
+     * A gateway serving Gemini on a Google-shaped endpoint reads the credential its own way and
+     * refuses a request that does not name its conversation: the scheme comes from the connector
+     * and the connector's headers ride along.
+     */
+    @Test
+    public void googleCarriesTheSchemeAndHeadersItsConnectorAsks() throws Exception {
+        responseBody = "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hello-go\"}]}}]}";
+        GoogleGenerativeAIBackend backend = new GoogleGenerativeAIBackend(
+                "gemini-4-argon", base(), "opkey", AuthScheme.BEARER,
+                Map.of("x-opencode-session", "ses_test", "x-opencode-client", "cadet"));
+
+        String result = backend.complete(new PromptData("sys", "hi"), new HashMap<>());
+
+        assertThat(result).isEqualTo("hello-go");
+        assertThat(lastHeaders.get("authorization")).isEqualTo("Bearer opkey");
+        assertThat(lastHeaders.get("x-opencode-session")).isEqualTo("ses_test");
+        assertThat(lastHeaders.get("x-opencode-client")).isEqualTo("cadet");
+    }
+
     @Test
     public void unreachableEndpointThrowsTransportFailure() throws Exception {
         server.stop(0); // force a connection failure

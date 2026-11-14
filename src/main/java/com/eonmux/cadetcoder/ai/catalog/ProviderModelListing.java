@@ -207,11 +207,11 @@ public final class ProviderModelListing {
                 builder.header(header.getKey(), header.getValue());
             }
             // The same identification a completion carries: this tool's name, and -- where the
-            // connector asks for it, as OpenCode Go does -- the conversation the listing serves.
+            // connector asks for it, as OpenCode's gateways do -- the conversation the listing
+            // serves.
             builder.header("User-Agent", "CadetCoder/" + BuildInfo.current().version());
-            if (connector.getSessionHeaderName() != null) {
-                builder.header(connector.getSessionHeaderName(),
-                               SessionManager.getInstance().getCurrentSessionId());
+            for (String headerName : connector.getSessionHeaderNames()) {
+                builder.header(headerName, SessionManager.getInstance().getCurrentSessionId());
             }
             AuthHeaders.apply(builder, connector.getAuthScheme(), apiKey);
 

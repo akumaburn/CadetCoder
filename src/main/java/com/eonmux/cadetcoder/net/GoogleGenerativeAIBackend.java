@@ -5,6 +5,8 @@ import com.eonmux.cadetcoder.ai.metrics.ReportedUsage;
 import com.eonmux.cadetcoder.ai.metrics.TokenUsage;
 import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.PromptImage;
+import com.eonmux.cadetcoder.ai.providers.AuthHeaders;
+import com.eonmux.cadetcoder.ai.providers.AuthScheme;
 import com.eonmux.cadetcoder.logging.CadetLogger;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -21,8 +23,9 @@ import java.util.Set;
 /**
  * Google Generative AI (Gemini) backend
  * ({@code POST {base}/models/{model}:generateContent}). Authenticates with the
- * {@code x-goog-api-key} header, mirroring opencode's google connector. The system prompt
- * is sent via {@code systemInstruction}.
+ * {@code x-goog-api-key} header by default, mirroring opencode's google connector; a gateway
+ * serving Gemini under its own scheme asks with {@link AuthScheme} and is answered with that.
+ * The system prompt is sent via {@code systemInstruction}.
  */
 public class GoogleGenerativeAIBackend extends AbstractLLMBackend {
 
@@ -38,11 +41,33 @@ public class GoogleGenerativeAIBackend extends AbstractLLMBackend {
     /** What Gemini calls a turn that ran out of output budget. */
     private static final String MAX_TOKENS = "MAX_TOKENS";
 
-    private final String apiKey;
+    private final String              apiKey;
+    private final AuthScheme          authScheme;
+    private final Map<String, String> extraHeaders;
 
     public GoogleGenerativeAIBackend(String modelName, String baseUrl, String apiKey) {
+        this(modelName, baseUrl, apiKey, AuthScheme.X_GOOG_API_KEY, Map.of());
+    }
+
+    /**
+     * Builds a Gemini backend that authenticates the way its connector asks and carries the
+     * connector's headers.
+     *
+     * <p>Google's own API reads the key from {@code x-goog-api-key}, but this wire is not only
+     * Google's: OpenCode's gateways serve their Gemini families on a Google-shaped endpoint and
+     * read the credential as a bearer token there, while the conversation's session headers --
+     * which their Go gateway refuses a request without -- have to ride along. A connector that
+     * declares neither scheme nor headers gets Google's own defaults.</p>
+     *
+     * @param authScheme how the credential is carried; {@code null} for Google's own scheme
+     * @param extraHeaders the connector's headers, applied as given
+     */
+    public GoogleGenerativeAIBackend(String modelName, String baseUrl, String apiKey,
+                                     AuthScheme authScheme, Map<String, String> extraHeaders) {
         super(modelName, normalize(baseUrl));
-        this.apiKey    = apiKey;
+        this.apiKey       = apiKey;
+        this.authScheme   = authScheme != null ? authScheme : AuthScheme.X_GOOG_API_KEY;
+        this.extraHeaders = extraHeaders != null ? extraHeaders : Map.of();
         this.available = apiEndpoint != null && !apiEndpoint.isEmpty()
                 && apiKey != null && !apiKey.isEmpty();
         setProviderId(PROVIDER_ID);
@@ -79,12 +104,14 @@ public class GoogleGenerativeAIBackend extends AbstractLLMBackend {
 
         String json = MAPPER.writeValueAsString(body);
         String url  = apiEndpoint + "/models/" + modelName + ":generateContent";
-        HttpRequest request = HttpRequests.to(URI.create(url))
+        HttpRequest.Builder builder = HttpRequests.to(URI.create(url))
                 .timeout(Duration.ofSeconds(timeout))
-                .header("Content-Type", "application/json")
-                .header("x-goog-api-key", apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(json))
-                .build();
+                .header("Content-Type", "application/json");
+        AuthHeaders.apply(builder, authScheme, apiKey);
+        for (Map.Entry<String, String> header : extraHeaders.entrySet()) {
+            builder.header(header.getKey(), header.getValue());
+        }
+        HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(json)).build();
 
         LOG.info("Sending request to Google Generative AI (model: " + modelName + ")");
         HttpResponse<String> response = sendWithRetry(request);

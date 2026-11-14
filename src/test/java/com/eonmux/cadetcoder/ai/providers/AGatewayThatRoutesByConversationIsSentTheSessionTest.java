@@ -3,6 +3,7 @@ package com.eonmux.cadetcoder.ai.providers;
 import com.eonmux.cadetcoder.session.SessionManager;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,38 +13,47 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p><b>The defect</b>: OpenCode Go refused every completion with HTTP 400 {@code MissingSessionID}
  * -- "Request is missing x-opencode-session and cannot be routed efficiently". Its contract with a
- * client is three lines: send coding-agent traffic, name yourself in the user agent rather than
- * letting the HTTP library name you, and carry a stable session id per conversation. CadetCoder
+ * client is: carry a stable session id per conversation, under the names its client sends them,
+ * and name yourself in the user agent rather than letting the HTTP library name you. CadetCoder
  * already has the id -- it is the session -- and the connector was registered without either.</p>
  *
- * <p><b>What is locked here</b>: that a connector declaring a session header sends it with the
- * current session's id, that one which declares none sends none, that the id is the session's own
- * and stable across the requests of a run, and that a client user agent is named without
- * overwriting a connector that named its own.</p>
+ * <p><b>What is locked here</b>: that a connector declaring session headers sends each of them
+ * with the current session's id, that one which declares none sends none, that the id is the
+ * session's own and stable across the requests of a run, and that a client user agent is named
+ * without overwriting a connector that named its own.</p>
  */
 public class AGatewayThatRoutesByConversationIsSentTheSessionTest {
 
+    /** The four names OpenCode's own client sends the conversation id under. */
+    private static final List<String> OPENCODE_SESSION_HEADERS = List.of(
+            "x-opencode-session", "x-opencode-session-id",
+            "x-session-affinity", "X-Session-Id");
+
     @Test
-    public void aConnectorDeclaringTheHeaderSendsWithTheSessionsOwnId() {
+    public void aConnectorDeclaringTheHeadersSendsEachWithTheSessionsOwnId() {
         ProviderConnector connector = new ProviderConnector(
-                "opencode-go", "OpenCode Go", java.util.List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null).withSessionHeader("x-opencode-session");
+                "opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/inference/go/openai/v1", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null).withSessionHeaders(OPENCODE_SESSION_HEADERS);
 
         Map<String, String> headers = connector.headersFor(false);
 
-        assertThat(headers.get("x-opencode-session"))
-                .as("the id is the conversation's, which is what routing and prompt caching key on")
-                .isEqualTo(SessionManager.getInstance().getCurrentSessionId())
-                .isNotBlank();
+        String id = SessionManager.getInstance().getCurrentSessionId();
+        assertThat(id).as("the session has an id to send").isNotBlank();
+        for (String headerName : OPENCODE_SESSION_HEADERS) {
+            assertThat(headers.get(headerName))
+                    .as(headerName + " carries the conversation's id, which is what routing and "
+                        + "prompt caching key on")
+                    .isEqualTo(id);
+        }
     }
 
     @Test
     public void theSessionsIdIsStableAcrossTheRequestsOfARun() {
         ProviderConnector connector = new ProviderConnector(
-                "opencode-go", "OpenCode Go", java.util.List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null).withSessionHeader("x-opencode-session");
+                "opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/inference/go/openai/v1", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null).withSessionHeaders(OPENCODE_SESSION_HEADERS);
 
         String first  = connector.headersFor(false).get("x-opencode-session");
         String second = connector.headersFor(false).get("x-opencode-session");
@@ -52,50 +62,55 @@ public class AGatewayThatRoutesByConversationIsSentTheSessionTest {
     }
 
     @Test
-    public void aConnectorThatDeclaresNoSessionHeaderSendsNone() {
-        ProviderConnector zen = new ProviderConnector(
-                "opencode", "OpenCode Zen", java.util.List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/v1", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null);
+    public void aConnectorThatDeclaresNoSessionHeadersSendsNone() {
+        ProviderConnector anthropic = new ProviderConnector(
+                "anthropic", "Anthropic", List.of("ANTHROPIC_API_KEY"),
+                "https://api.anthropic.com/v1", AuthScheme.X_API_KEY,
+                ConnectorProtocol.ANTHROPIC_MESSAGES, null);
 
-        assertThat(zen.getSessionHeaderName()).isNull();
-        assertThat(zen.headersFor(false))
-                .doesNotContainKey("x-opencode-session");
+        assertThat(anthropic.getSessionHeaderNames()).isEmpty();
+        assertThat(anthropic.headersFor(false))
+                .doesNotContainKeys(OPENCODE_SESSION_HEADERS.toArray(String[]::new));
     }
 
     @Test
     public void theClientNamesItselfRatherThanTheHttpLibrary() {
         ProviderConnector connector = new ProviderConnector(
-                "opencode-go", "OpenCode Go", java.util.List.of("OPENCODE_API_KEY"),
-                "https://opencode.ai/zen/go/v1", AuthScheme.BEARER,
-                ConnectorProtocol.OPENAI_CHAT, null).withSessionHeader("x-opencode-session");
+                "opencode-go", "OpenCode Go", List.of("OPENCODE_API_KEY"),
+                "https://opencode.ai/inference/go/openai/v1", AuthScheme.BEARER,
+                ConnectorProtocol.OPENAI_CHAT, null);
 
         assertThat(connector.headersFor(false))
-                .containsEntry("User-Agent", "CadetCoder/" 
+                .containsEntry("User-Agent", "CadetCoder/"
                                + com.eonmux.cadetcoder.build.BuildInfo.current().version());
     }
 
     @Test
     public void aConnectorWithItsOwnUserAgentKeepsIt() {
         ProviderConnector copilot = new ProviderConnector(
-                "github-copilot", "GitHub Copilot", java.util.List.of(),
+                "github-copilot", "GitHub Copilot", List.of(),
                 "https://api.githubcopilot.com", AuthScheme.BEARER,
                 ConnectorProtocol.OPENAI_CHAT,
-                java.util.Map.of("Editor-Version", "CadetCoder/1.0",
-                                 "Copilot-Integration-Id", "vscode-chat",
-                                 "User-Agent", "CopilotAgent/9.9"));
+                Map.of("Editor-Version", "CadetCoder/1.0",
+                       "Copilot-Integration-Id", "vscode-chat",
+                       "User-Agent", "CopilotAgent/9.9"));
 
         assertThat(copilot.headersFor(false))
                 .containsEntry("User-Agent", "CopilotAgent/9.9");
     }
 
     @Test
-    public void theRegisteredGoConnectorDeclaresTheHeader() {
-        ProviderConnector go = ProviderRegistry.getInstance().get("opencode-go");
+    public void theRegisteredGatewaysDeclareTheHeaders() {
+        ProviderRegistry registry = ProviderRegistry.getInstance();
 
-        assertThat(go.getSessionHeaderName()).isEqualTo("x-opencode-session");
-        assertThat(ProviderRegistry.getInstance().get("opencode").getSessionHeaderName())
-                .as("Zen asked for no such header, and is sent none")
-                .isNull();
+        assertThat(registry.get("opencode-go").getSessionHeaderNames())
+                .as("Go refuses a request that names no conversation")
+                .containsExactlyElementsOf(OPENCODE_SESSION_HEADERS);
+        assertThat(registry.get("opencode").getSessionHeaderNames())
+                .as("Zen speaks the same client contract")
+                .containsExactlyElementsOf(OPENCODE_SESSION_HEADERS);
+        assertThat(registry.get("openai").getSessionHeaderNames())
+                .as("OpenAI's own API asks for no session id, and is sent none")
+                .isEmpty();
     }
 }
