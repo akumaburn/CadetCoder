@@ -1444,7 +1444,10 @@ beside itself, and puts the new one in its place. The new build runs the next
 time you start `cadet`; the process that installed it finishes on the build it
 started with. A build that cannot say where it came from -- one made outside
 git -- reports that it cannot check rather than guessing, and a run with no
-network says nothing rather than waiting on one. A model may run
+network says nothing rather than waiting on one. GitHub counts unauthenticated
+lookups sixty to the hour by calling address, which on a shared connection is
+everyone's quota together; `GH_TOKEN` or `GITHUB_TOKEN` in the environment
+checks against a quota of its own. A model may run
 `update check`; installing an update is always yours, whoever asks.
 
 `logs/history.log` holds the interactive shell's command history, which is the
