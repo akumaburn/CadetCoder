@@ -85,6 +85,7 @@ public final class UpdateCheck {
         try {
             HttpResponse<String> response = client().send(request.GET().build(),
                                                            HttpResponse.BodyHandlers.ofString());
+            LAST_STATUS_REFUSED = response.statusCode() == 403 || response.statusCode() == 429;
             if (response.statusCode() != 200) {
                 return null;
             }
@@ -178,6 +179,10 @@ public final class UpdateCheck {
         }
         Release release = latestRelease();
         if (release == null) {
+            String refused = refusedReason();
+            if (refused != null) {
+                return new Result(State.UNKNOWN, null, refused);
+            }
             return new Result(State.UNKNOWN, null,
                               "no release could be reached at " + local.repo()
                               + " -- it may have none yet, or the network may be down");
@@ -187,6 +192,26 @@ public final class UpdateCheck {
         }
         return new Result(State.UP_TO_DATE, release, null);
     }
+
+    /**
+     * Why the API refused the last lookup, when it said.
+     *
+     * <p>GitHub counts unauthenticated lookups sixty to the hour by calling address, and on a
+     * shared connection that is everyone's quota together -- the commonest reason a check that
+     * worked yesterday answers nothing today. Said out loud rather than folded into "network may
+     * be down", because the remedy is different: a token of one's own.</p>
+     *
+     * @return the reason, or {@code null} when the last failure was not a refusal
+     */
+    private static String refusedReason() {
+        return LAST_STATUS_REFUSED ? "the GitHub API refused the lookup -- the address's share of"
+                                   + " lookups is used up for this hour. Set GH_TOKEN or"
+                                   + " GITHUB_TOKEN to check against your own quota."
+                                   : null;
+    }
+
+    /** Set by the last lookup: whether the API answered with a refusal rather than not at all. */
+    private static volatile boolean LAST_STATUS_REFUSED;
 
     /**
      * The one start-up line, when a newer build is sitting there.
