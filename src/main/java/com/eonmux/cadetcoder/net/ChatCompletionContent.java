@@ -182,16 +182,41 @@ public final class ChatCompletionContent {
      * @return whether it carries a reasoning field with text in it
      */
     private static boolean hasReasoning(Map<?, ?> message) {
+        return firstReasoning(message) != null;
+    }
+
+    /**
+     * The reasoning a provider reports beside the reply, when it reports it in a field of its own.
+     *
+     * <p>DeepSeek's API -- and the gateways serving it -- put a reasoning model's thought in
+     * {@code reasoning_content}, some in {@code reasoning}, and the answer in {@code content}.
+     * The two spellings are the same fact, read in the order the APIs that use them are
+     * established.</p>
+     *
+     * @param response the parsed response body
+     * @return the reasoning text, or {@link Optional#empty()} when none was reported
+     */
+    public static java.util.Optional<String> firstChoiceReasoning(Map<String, ?> response) {
+        return java.util.Optional.ofNullable(firstReasoning(firstMessage(response)));
+    }
+
+    /**
+     * The reasoning beside this message, or {@code null} when it carries none.
+     *
+     * @param message the message map, may be {@code null}
+     * @return the non-blank reasoning text, or {@code null}
+     */
+    private static String firstReasoning(Map<?, ?> message) {
         if (message == null) {
-            return false;
+            return null;
         }
         for (String field : new String[]{"reasoning_content", "reasoning"}) {
             String text = textOf(message.get(field));
             if (text != null && !text.isBlank()) {
-                return true;
+                return text;
             }
         }
-        return false;
+        return null;
     }
 
     /** The first choice's message, or {@code null} when the response does not carry one. */

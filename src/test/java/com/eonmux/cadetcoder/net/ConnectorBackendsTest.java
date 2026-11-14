@@ -103,6 +103,40 @@ public class ConnectorBackendsTest {
         assertThat(lastHeaders).doesNotContainKey("authorization");
     }
 
+    /**
+     * A reasoning model that reports its thought in a field beside the answer has that thought
+     * filed for the view; the reply itself is unchanged.
+     */
+    @Test
+    public void reasoningBesideTheAnswerIsFiledForTheView() throws Exception {
+        responseBody = "{\"choices\":[{\"message\":{"
+                + "\"reasoning_content\":\"the model considered the options\","
+                + "\"content\":\"the answer\"}}]}";
+        OpenAICompatibleBackend backend = new OpenAICompatibleBackend(
+                "deepseek-v4.1-flash", base(), "k", AuthScheme.BEARER, Map.of(), Map.of());
+
+        String result = backend.complete(new PromptData("sys", "hi"), new HashMap<>());
+
+        assertThat(result).as("the reply is the answer, as it always was").isEqualTo("the answer");
+        assertThat(com.eonmux.cadetcoder.ui.ThinkingView.drain())
+                .isEqualTo("the model considered the options");
+    }
+
+    @Test
+    public void reasoningThatIsTheWholeReplyIsNotFiledTwice() throws Exception {
+        responseBody = "{\"choices\":[{\"message\":{"
+                + "\"reasoning_content\":\"the thought stands alone\",\"content\":null}}]}";
+        OpenAICompatibleBackend backend = new OpenAICompatibleBackend(
+                "deepseek-v4.1-flash", base(), "k", AuthScheme.BEARER, Map.of(), Map.of());
+
+        String result = backend.complete(new PromptData("sys", "hi"), new HashMap<>());
+
+        assertThat(result).isEqualTo("the thought stands alone");
+        assertThat(com.eonmux.cadetcoder.ui.ThinkingView.drain())
+                .as("already the reply; showing it twice would print the same words twice")
+                .isNull();
+    }
+
     @Test
     public void anthropicSendsApiKeyVersionAndParsesContent() throws Exception {
         responseBody = "{\"content\":[{\"type\":\"text\",\"text\":\"hello-anthropic\"}]}";

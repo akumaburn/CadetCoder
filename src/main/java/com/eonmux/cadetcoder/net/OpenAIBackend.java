@@ -180,6 +180,11 @@ public class OpenAIBackend extends AbstractLLMBackend {
                 java.util.Optional<String> text = ChatCompletionContent.firstChoiceText(result);
                 if (text.isPresent()) {
                     String content = text.get();
+                    // A reasoning model's thought, reported in a field beside the answer, is part
+                    // of what this provider said. Filed for the view while the reply is unchanged.
+                    ChatCompletionContent.firstChoiceReasoning(result)
+                            .filter(reasoning -> !reasoning.equals(content))
+                            .ifPresent(com.eonmux.cadetcoder.ui.ThinkingView::reported);
                     if (logger != null) {
                         logger.debug("Response content length: " + content.length() + " characters");
                     }

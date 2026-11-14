@@ -296,9 +296,10 @@ public final class ConfigOverrides {
             case "colorTheme":        ui.setColorTheme(value); break;
             case "verbosityLevel":    ui.setVerbosityLevel(withinLevels(property, value)); break;
             case "showCommandOutput": ui.setShowCommandOutput(asBoolean(property, value)); break;
+            case "showThinking":      ui.setShowThinking(asBoolean(property, value)); break;
             case "interactivePrompts": ui.setInteractivePrompts(asBoolean(property, value)); break;
             default: throw unknown("ui", property, "colorEnabled, colorTheme, verbosityLevel, "
-                    + "showCommandOutput, interactivePrompts");
+                    + "showCommandOutput, showThinking, interactivePrompts");
         }
     }
 

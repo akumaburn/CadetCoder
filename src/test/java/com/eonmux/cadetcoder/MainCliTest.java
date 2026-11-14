@@ -1,5 +1,6 @@
 package com.eonmux.cadetcoder;
 
+import com.eonmux.cadetcoder.build.BuildInfo;
 import com.eonmux.cadetcoder.commands.InputRouter;
 import com.eonmux.cadetcoder.config.ConfigManager;
 import com.eonmux.cadetcoder.config.Configuration;
@@ -307,7 +308,7 @@ public class MainCliTest {
         assertThat(exitCode).isEqualTo(0);
         String output = outputCapture.getAllOutput();
         assertThat(output).doesNotContain("Unknown option: '-V'");
-        assertThat(output).contains("CadetCoder 1.0");
+        assertThat(output).contains("CadetCoder " + BuildInfo.current().version());
     }
 
     // ------------------------------------------------------------------

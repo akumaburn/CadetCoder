@@ -766,6 +766,17 @@ public class Configuration {
          */
         private boolean showCommandOutput = false;
 
+        /**
+         * Whether a reasoning model's thinking tokens are printed inline rather than collapsed.
+         *
+         * <p>Off by default: in the shell the thinking is a collapsed run that opens on click or
+         * {@code Tab}, so the toggle is the open itself and this setting is only for printing it
+         * inline everywhere -- including a plain console, where there is nothing to click. The
+         * thinking itself is shown only when the model produced some, and never changes what the
+         * model receives; see ThinkingView.</p>
+         */
+        private boolean showThinking = false;
+
         // Getters and setters
         public boolean isShowCommandOutput() {
             return showCommandOutput;
@@ -773,6 +784,14 @@ public class Configuration {
 
         public void setShowCommandOutput(boolean showCommandOutput) {
             this.showCommandOutput = showCommandOutput;
+        }
+
+        public boolean isShowThinking() {
+            return showThinking;
+        }
+
+        public void setShowThinking(boolean showThinking) {
+            this.showThinking = showThinking;
         }
 
         public boolean isColorEnabled() {

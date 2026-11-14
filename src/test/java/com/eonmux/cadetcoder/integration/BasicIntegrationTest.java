@@ -1,6 +1,7 @@
 package com.eonmux.cadetcoder.integration;
 
 import com.eonmux.cadetcoder.Main;
+import com.eonmux.cadetcoder.build.BuildInfo;
 import com.eonmux.cadetcoder.test.AiTestSupport;
 import com.eonmux.cadetcoder.test.TestOutputCapture;
 import org.junit.*;
@@ -65,7 +66,9 @@ public class BasicIntegrationTest {
 
         assertThat(exitCode).isEqualTo(0);
         String output = outputCapture.getOutput();
-        assertThat(output).contains("CadetCoder 1.0");
+        // The stamp, not a version literal: this test answers whether --version names the product
+        // and the build, and a literal here would break on every version bump.
+        assertThat(output).contains("CadetCoder " + BuildInfo.current().version());
     }
 
     @Test

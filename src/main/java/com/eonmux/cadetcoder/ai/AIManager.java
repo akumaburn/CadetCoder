@@ -10,6 +10,7 @@ import com.eonmux.cadetcoder.config.Configuration;
 import com.eonmux.cadetcoder.error.ErrorHandler;
 import com.eonmux.cadetcoder.logging.DebugLogger;
 import com.eonmux.cadetcoder.ui.CollapsedOutput;
+import com.eonmux.cadetcoder.ui.ThinkingView;
 import com.eonmux.cadetcoder.net.LLMContextOverflowException;
 import com.eonmux.cadetcoder.net.LLMEmptyResponseException;
 import com.eonmux.cadetcoder.net.LLMException;
@@ -302,6 +303,9 @@ public class AIManager {
         // just the same -- and clearing between them credited the request with the last attempt
         // alone. See ReportedUsage, which now adds each attempt to what is already there.
         ReportedUsage.clear();
+        // And the same hygiene for the reasoning a provider reported beside a reply: anything
+        // still standing from an earlier request on this thread belongs to no reply now in hand.
+        ThinkingView.clear();
 
         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
             // Started per attempt, so what is reported is how long the call that answered took.
@@ -344,6 +348,13 @@ public class AIManager {
 
                 // Lightweight validation - just check if response is not null and not empty
                 if (response != null && !response.trim().isEmpty()) {
+                    // The thinking a reasoning model produced beside this reply stands above it,
+                    // where the reply is about to be read. Only on the recorded path: a judge's
+                    // verdict and its reasoning are nobody's conversation, and the same funnel
+                    // serves both. See ThinkingView for the two forms and the toggle.
+                    if (!Boolean.TRUE.equals(HISTORY_RECORDING_SUPPRESSED.get())) {
+                        ThinkingView.renderAlongside(response);
+                    }
                     // Only genuine model output belongs in the conversation history. Recording a
                     // backend error string here polluted the context of every following turn with
                     // text the model never produced.

@@ -6,6 +6,7 @@ import com.eonmux.cadetcoder.ai.PromptData;
 import com.eonmux.cadetcoder.ai.providers.AuthHeaders;
 import com.eonmux.cadetcoder.ai.providers.AuthScheme;
 import com.eonmux.cadetcoder.logging.CadetLogger;
+import com.eonmux.cadetcoder.ui.ThinkingView;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URI;
@@ -262,10 +263,16 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
             if (ChatCompletionContent.hasChoices(result)) {
                 // Every shape this protocol puts an answer in, read in one place: see
                 // ChatCompletionContent for the ones that are not a plain string.
-                return ChatCompletionContent.firstChoiceText(result)
+                String text = ChatCompletionContent.firstChoiceText(result)
                         .orElseThrow(() -> new LLMProtocolException(
                                 providerId(), modelName, url,
                                 ChatCompletionContent.absenceDetail(result)));
+                // A reasoning model's thought, reported in a field beside the answer, is part of
+                // what this provider said. Filed for the view while the reply itself is unchanged.
+                ChatCompletionContent.firstChoiceReasoning(result)
+                        .filter(reasoning -> !reasoning.equals(text))
+                        .ifPresent(ThinkingView::reported);
+                return text;
             }
             throw new LLMProtocolException(providerId(), modelName, url,
                                            "no completion choices returned");

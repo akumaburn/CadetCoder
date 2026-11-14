@@ -188,6 +188,11 @@ public class LlamaServerBackend extends AbstractLLMBackend {
                         .orElseThrow(() -> new LLMProtocolException(
                                 PROVIDER_ID, modelName, endpoint,
                                 ChatCompletionContent.absenceDetail(result)));
+                // A reasoning model's thought, reported in a field beside the answer, is part of
+                // what this provider said. Filed for the view while the reply is unchanged.
+                ChatCompletionContent.firstChoiceReasoning(result)
+                        .filter(reasoning -> !reasoning.equals(content))
+                        .ifPresent(com.eonmux.cadetcoder.ui.ThinkingView::reported);
                 logger.debug("Response content length: " + content.length() + " characters");
                 // Backend-level debug logging (centralized for this backend)
                 if (debugLogger != null) {
