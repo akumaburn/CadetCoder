@@ -98,7 +98,7 @@ public final class HelpContent {
         GROUPS.put("Session and tasks",
                    List.of("session", "context", "todoread", "todowrite", "timer", "compact"));
         GROUPS.put("Providers and models", List.of("login", "copilot", "models"));
-        GROUPS.put("Settings", List.of("config", "ubermode", "theme", "prompt"));
+        GROUPS.put("Settings", List.of("config", "ubermode", "theme", "prompt", "update"));
         GROUPS.put("Help and exiting", List.of("help", "clear", "quit"));
     }
 

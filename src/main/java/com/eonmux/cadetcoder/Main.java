@@ -50,7 +50,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 // "cadet". One name, and it is the one the install instructions alias.
 @Command (name = "cadet",
           mixinStandardHelpOptions = true,
-          version = "CadetCoder 1.0",
+          versionProvider = com.eonmux.cadetcoder.build.BuildVersionProvider.class,
           description = "AI-assisted coding tool",
           // No picocli subcommands. A second dispatch path would have its own rules, and a
           // command name in the middle of a sentence could match a subcommand and run. Every
@@ -327,6 +327,13 @@ public class Main implements Callable<Integer> {
             // Initialize theme
             ThemedOutputFormatter.initializeTheme();
 
+            // The one quiet line a newer release earns. Asked at most once a day, cached between
+            // starts, silent in every failure; see UpdateCheck. The update command answers the
+            // same question in full a moment later, so it is not asked twice in one run.
+            if (!asksForTheUpdateCommand()) {
+                com.eonmux.cadetcoder.build.UpdateCheck.printNotice();
+            }
+
             // The UI flags (--no-color, --verbose, --debug, --read-only) are applied by
             // applyUiFlags, from overrideConfiguration, before any command runs.
 
@@ -385,6 +392,19 @@ public class Main implements Callable<Integer> {
         });
     }
 
+
+    /**
+     * Whether this invocation is the update command itself.
+     *
+     * <p>The update command answers the same question the start-up notice asks, in full and
+     * whether or not the answer is welcome, so the notice keeps quiet for it.</p>
+     *
+     * @return whether the user already asked for {@code update} by name
+     */
+    private boolean asksForTheUpdateCommand() {
+        return commandArgs != null && commandArgs.length > 0
+               && "update".equalsIgnoreCase(commandArgs[0].trim());
+    }
 
     /**
      * Whether Git integration should be considered active for this run.

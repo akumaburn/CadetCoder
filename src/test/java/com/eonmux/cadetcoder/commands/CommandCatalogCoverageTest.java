@@ -63,7 +63,11 @@ public class CommandCatalogCoverageTest {
             Map.entry("ubermode", "decides whether a run is allowed to stop when the model says it "
                                   + "is finished; a model able to turn that off would be deciding "
                                   + "for itself whether its own claim needs checking"),
-            Map.entry("undo", "discards uncommitted work"));
+            Map.entry("undo", "discards uncommitted work"),
+            Map.entry("update", "replaces the program every participant of the session is running "
+                                + "inside; a model installing its own jar would discard its own "
+                                + "context and the user's with it, and it is the user's machine "
+                                + "and the user's call"));
 
     private static Set<String> advertised() {
         Set<String> names = new TreeSet<>();

@@ -1327,6 +1327,7 @@ interactive shell.
 | `session [status \| list [count] \| new \| resume <id>]` | OK | CadetCoder keeps the session being left, so `resume` can reopen it. A model cannot start or switch sessions. |
 | `config [<name> [<value>]]` | OK | No arguments prints the config with secrets redacted. One argument prints that setting. Two arguments change it and save it. Names are `<section>.<property>`. |
 | `ubermode [on \| off \| status]` | OK | Keeps a run going until the task is actually finished. No argument flips it. See [Uber mode](#uber-mode). |
+| `update [check \| now]` | OK | Compares this build against the latest release of the repository it was built from, and `now` installs that release over the running jar, keeping the replaced one beside it. A model cannot install an update. |
 | `prompt [list\|show\|edit\|reset\|reload] [name] [-c <content> \| -f <file>]` | OK | No argument lists the prompt templates. |
 | `help [command]` | OK | `help <name>` prints one command's options. |
 
@@ -1406,6 +1407,7 @@ Everything lives under `~/.cadet/`, rather than under `~/.config/cadet/`.
 ├── models/               # local model storage
 ├── cache/models.json     # cached models.dev catalog
 ├── prompts/              # user prompt template overrides (*.json)
+├── update-check.json     # cached answer of the last update check
 └── copilot-auth.json     # GitHub Copilot token, if you logged in
 ```
 

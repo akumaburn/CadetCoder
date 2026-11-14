@@ -64,6 +64,9 @@ public final class CommandAliases {
             Map.entry("save", "write"),
             // Change a file.
             Map.entry("modify", "edit"),
+            // `update` is also a registered command (the program's own update), but it is
+            // withheld from the model's catalog, so a model's verb can only ever mean this.
+            // See the exception documented in ActionVerbSynonymsDispatchTest beside `execute`.
             Map.entry("update", "edit"),
             Map.entry("change", "edit"),
             // List a directory.

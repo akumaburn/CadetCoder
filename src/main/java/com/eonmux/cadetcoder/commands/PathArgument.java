@@ -64,6 +64,9 @@ final class PathArgument {
         Map.entry("job", NONE),
         Map.entry("execute", NONE),
         Map.entry("shell", NONE),
+        // update takes a subcommand (check or now). It names no file, and it is the one command
+        // whose work must not be reachable by a model's action at all.
+        Map.entry("update", NONE),
         Map.entry("agent", NONE),
         // workers takes one task DESCRIPTION per worker. Validating argv[0] as a path would reject
         // every run with "File not found: review error handling".

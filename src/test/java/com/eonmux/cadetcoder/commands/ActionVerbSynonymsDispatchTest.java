@@ -131,13 +131,16 @@ public class ActionVerbSynonymsDispatchTest {
     }
 
     /**
-     * A registered command name means itself, with one deliberate exception.
+     * A registered command name means itself, with two deliberate exceptions.
      *
      * <p>{@code execute} is registered -- it runs a FILE of commands -- but it is also the verb
      * models pick most often for "run a shell command", and dispatching it literally resolved the
-     * shell string as a script path and skipped the shell security validation. That trade is
-     * documented on {@link CommandAliases}; every other registered name must be left alone, because
-     * an alias that shadows a real command silently sends its work somewhere else.</p>
+     * shell string as a script path and skipped the shell security validation. {@code update} is
+     * registered the same other way round -- it updates this program, and no model may ever call
+     * it -- but it is also the verb models pick most often for "edit this file", and dispatching
+     * it literally would send a file edit off to the update check. Both trades are documented on
+     * {@link CommandAliases}; every other registered name must be left alone, because an alias
+     * that shadows a real command silently sends its work somewhere else.</p>
      *
      * <p>Driven off the registry rather than a written-out list, because the list is what goes
      * stale.</p>
@@ -147,6 +150,10 @@ public class ActionVerbSynonymsDispatchTest {
         for (String name : new CommandRegistry().getCommands().keySet()) {
             if ("execute".equals(name)) {
                 assertThat(CommandAliases.canonicalize(name)).isEqualTo("bash");
+                continue;
+            }
+            if ("update".equals(name)) {
+                assertThat(CommandAliases.canonicalize(name)).isEqualTo("edit");
                 continue;
             }
             assertThat(CommandAliases.canonicalize(name))
