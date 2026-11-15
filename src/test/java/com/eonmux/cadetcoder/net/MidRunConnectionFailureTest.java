@@ -12,6 +12,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,6 +29,8 @@ public class MidRunConnectionFailureTest {
 
     private HttpServer          server;
     private final AtomicInteger requests = new AtomicInteger();
+    /** The body of the most recent request, for tests that assert what was asked for. */
+    private final AtomicReference<String> lastBody = new AtomicReference<>("");
 
     private String baseUrl;
 
@@ -64,6 +67,7 @@ public class MidRunConnectionFailureTest {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
             requests.incrementAndGet();
+            lastBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             handler.accept(exchange);
         });
         server.start();
@@ -150,7 +154,17 @@ public class MidRunConnectionFailureTest {
 
         catchThrowable(this::complete);
 
-        assertThat(requests.get()).as("repeating a malformed request cannot help").isEqualTo(1);
+        // Two requests, and no third: the streamed attempt was refused, the plain attempt carried
+        // the same malformed request and failed the same way. The refusal is remembered, so a
+        // further call would not even ask for a stream -- what is asserted here is that neither a
+        // retry of the streamed request nor a retry of the plain one ever happened.
+        assertThat(requests.get()).as("repeating a malformed request cannot help").isEqualTo(2);
+        assertThat(lastRequestHadNoStream()).isTrue();
+    }
+
+    /** Whether the most recent request asked for a plain completion, not a stream. */
+    private boolean lastRequestHadNoStream() {
+        return !lastBody.get().contains("\"stream\":true");
     }
 
     @Test

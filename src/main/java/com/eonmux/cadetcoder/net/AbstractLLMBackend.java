@@ -241,7 +241,7 @@ public abstract class AbstractLLMBackend implements LLMBackend {
     }
 
     /** @return the whole-exchange deadline in seconds, from the system property or the default */
-    private static int responseDeadlineSeconds() {
+    protected static int responseDeadlineSeconds() {
         String configured = System.getProperty(RESPONSE_DEADLINE_PROPERTY);
         if (configured != null) {
             try {

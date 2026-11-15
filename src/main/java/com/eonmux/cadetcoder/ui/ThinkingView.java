@@ -70,6 +70,22 @@ public final class ThinkingView {
      */
     private static final ThreadLocal<String> REPORTED = new ThreadLocal<>();
 
+    /**
+     * The live stream of one request's reasoning, while it arrives.
+     *
+     * <p>Installed around a completion call by {@code AIManager}, fed by the backend that reads
+     * the wire, so the thought appears as it is thought rather than after the whole reply is in.
+     * This is what fills the long pause after a command: a reasoning model's answer used to arrive
+     * only when generation finished, and a fifty-second turn was fifty seconds of a silent screen.</p>
+     */
+    private static final ThreadLocal<LiveStream> LIVE = new ThreadLocal<>();
+
+    /**
+     * Whether the reasoning beside this thread's last reply was already shown live, so the
+     * end-of-turn render does not print it a second time.
+     */
+    private static final ThreadLocal<Boolean> STREAMED = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     private ThinkingView() {
     }
 
@@ -106,6 +122,130 @@ public final class ThinkingView {
     /** Empties the channel, so a request that never displays leaves nothing for the next one. */
     public static void clear() {
         REPORTED.remove();
+        STREAMED.set(Boolean.FALSE);
+    }
+
+    /* ------------------------------------------------------------------ *
+     * The live stream                                                     *
+     * ------------------------------------------------------------------ */
+
+    /**
+     * Opens the live stream for one completion call on this thread.
+     *
+     * <p>Nothing is printed here: a model that produces no reasoning prints nothing, and the
+     * header appears only when the first thought arrives. Paired with {@link #liveEnd()}, which
+     * every caller must run in a {@code finally}.
+     */
+    public static void liveBegin() {
+        LIVE.set(new LiveStream());
+        STREAMED.set(Boolean.FALSE);
+    }
+
+    /**
+     * Files one reasoning delta as it came off the wire.
+     *
+     * <p>A no-op unless {@link #liveBegin()} ran on this thread, so a backend that streams
+     * without a listener waiting costs nothing. The backend calls this on the same thread that
+     * reads the stream, which is the thread the span was opened on.</p>
+     *
+     * @param delta the reasoning text that arrived, may be {@code null} or empty
+     */
+    public static void liveDelta(String delta) {
+        LiveStream live = LIVE.get();
+        if (live != null && delta != null && !delta.isEmpty()) {
+            live.receive(delta);
+        }
+    }
+
+    /**
+     * Closes the live stream, flushing whatever thinking is still unprinted.
+     *
+     * <p>Runs in a {@code finally} around the completion call, so a failed or interrupted request
+     * leaves the run closed and the display consistent for whatever prints next.</p>
+     */
+    public static void liveEnd() {
+        LiveStream live = LIVE.get();
+        if (live != null) {
+            live.finish();
+        }
+        LIVE.remove();
+    }
+
+    /**
+     * Whether the reasoning beside this thread's last reply was already shown live.
+     *
+     * @return {@code true} when any reasoning was streamed to the display during the span
+     */
+    public static boolean wasStreamedLive() {
+        return Boolean.TRUE.equals(STREAMED.get());
+    }
+
+    /**
+     * One request's reasoning, as it accumulates.
+     *
+     * <p>Whole lines are what a console and a transcript both want, so deltas buffer until a
+     * newline completes a line. A thought that runs on without one -- providers do not all
+     * punctuate -- is flushed at a fixed width instead, so the display keeps moving and no line
+     * grows without bound.</p>
+     */
+    private static final class LiveStream {
+        /** Columns of unprinted reasoning after which a line is flushed without its newline. */
+        private static final int SOFT_FLUSH_WIDTH = 120;
+
+        private final StringBuilder line = new StringBuilder();
+        private boolean runOpened;
+        private boolean shown;
+
+        void receive(String delta) {
+            line.append(delta);
+            int at;
+            while ((at = indexOfNewline(line)) >= 0) {
+                flushLine(line.substring(0, at));
+                line.delete(0, at + 1);
+            }
+            if (line.length() >= SOFT_FLUSH_WIDTH) {
+                flushLine(line.toString());
+                line.setLength(0);
+            }
+        }
+
+        void finish() {
+            if (!line.isEmpty()) {
+                flushLine(line.toString());
+                line.setLength(0);
+            }
+            if (runOpened) {
+                ThemedOutputFormatter.routeOutput(CollapsedOutput.CLOSE);
+                runOpened = false;
+            }
+            if (shown) {
+                STREAMED.set(Boolean.TRUE);
+            }
+        }
+
+        /** Prints one line of thinking, opening the run and its header on the first line. */
+        private void flushLine(String text) {
+            if (!runOpened) {
+                OutputFormatter.printSubheader("thinking");
+                if (CollapsedOutput.isSupported()) {
+                    ThemedOutputFormatter.routeOutput(CollapsedOutput.OPEN);
+                }
+                runOpened = true;
+            }
+            shown = true;
+            ThemedOutputFormatter.printDim(text.stripTrailing());
+        }
+
+        /** The first {@code \n} or {@code \r} in the buffer, or -1 when there is none yet. */
+        private static int indexOfNewline(StringBuilder text) {
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (c == '\n' || c == '\r') {
+                    return i;
+                }
+            }
+            return -1;
+        }
     }
 
     /* ------------------------------------------------------------------ *
@@ -201,6 +341,11 @@ public final class ThinkingView {
      */
     public static void renderAlongside(String reply) {
         String reasoning = drain();
+        // Reasoning that already streamed live while it was being thought stands on the screen
+        // above this point; printing it again would say everything twice.
+        if (wasStreamedLive()) {
+            reasoning = null;
+        }
         List<String> blocks = blocksIn(reply);
         if (isBlank(reasoning) && blocks.isEmpty()) {
             return;

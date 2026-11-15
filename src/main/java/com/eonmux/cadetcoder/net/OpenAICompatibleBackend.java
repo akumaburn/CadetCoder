@@ -8,7 +8,6 @@ import com.eonmux.cadetcoder.ai.providers.AuthScheme;
 import com.eonmux.cadetcoder.logging.CadetLogger;
 import com.eonmux.cadetcoder.ui.ThinkingView;
 import com.fasterxml.jackson.databind.ObjectMapper;
-
 import java.net.URI;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -112,6 +111,28 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
 
         InlineCacheMarker marker = inlineCacheMarker(promptChars(promptData));
 
+        // The stream is asked for first, because it is what makes a reasoning model's turn
+        // watchable: its thinking arrives while it is thought instead of after the whole reply is
+        // generated. A provider that answers the request with a plain completion instead of an
+        // event stream is handled inside the streaming path, and one that refuses the parameter
+        // outright is remembered and never asked again -- see STREAM_REFUSED.
+        if (streamingWanted() && !STREAM_REFUSED.contains(streamKey())) {
+            try {
+                return completeStreaming(url, promptData, temperature, maxTokens, timeout, marker);
+            } catch (LLMBadRequestException e) {
+                // Any 400 falls back to the blocking request, which owns the cache-marker retry
+                // and can answer a plain rejection exactly as it always has. A provider that
+                // refuses a request that carries no cache marker cannot be rejecting the marker,
+                // so it is remembered as refusing the stream; with a marker set, only a reply
+                // that names the stream earns the memory.
+                if (marker == InlineCacheMarker.NONE || looksLikeStreamRejection(e.getMessage())) {
+                    STREAM_REFUSED.add(streamKey());
+                    LOG.info("Provider refused streaming; falling back to blocking requests ("
+                             + providerId() + "/" + modelName + ")");
+                }
+            }
+        }
+
         HttpResponse<String> response = send(url, promptData, temperature, maxTokens, timeout, marker);
 
         if (response.statusCode() == 400 && marker != InlineCacheMarker.NONE
@@ -129,6 +150,122 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
             throw failure;
         }
         return extractContent(response.body(), url);
+    }
+
+    /** Providers that answered a streamed request with a refusal to stream, by provider/model. */
+    private static final Set<String> STREAM_REFUSED = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /** System property that turns streaming off for a run, for when a provider misbehaves. */
+    public static final String STREAMING_PROPERTY = "cadet.llm.streaming";
+
+    /** @return whether this request should ask the provider for a stream */
+    private static boolean streamingWanted() {
+        String setting = System.getProperty(STREAMING_PROPERTY);
+        return setting == null || !"false".equalsIgnoreCase(setting.trim());
+    }
+
+    /** @return the memory key naming this provider and model */
+    private String streamKey() {
+        return providerId() + "/" + modelName;
+    }
+
+    /**
+     * Sends the request as a stream, retrying the failures a retry would help.
+     *
+     * <p>The blocking send retries inside {@code sendWithRetry}; a streamed request does its own
+     * sending, so it carries the same policy here, against the same {@link RetryPolicy}: a gateway
+     * that hiccups mid-morning is retried away whether it hiccuped before the headers or in the
+     * middle of the stream.</p>
+     */
+    private String completeStreaming(String url, PromptData promptData, float temperature,
+                                     int maxTokens, int timeout, InlineCacheMarker marker)
+            throws Exception {
+        RetryPolicy policy = RetryPolicy.fromSystemProperties();
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return sendStreamedOnce(url, promptData, temperature, maxTokens, timeout, marker);
+            } catch (LLMException e) {
+                if (!policy.shouldRetry(e, attempt)) {
+                    throw e;
+                }
+                long delay = policy.delayMillis(attempt, e.getRetryAfter());
+                LOG.info("Streamed request failed (" + e.getClass().getSimpleName() + "), retrying in "
+                         + delay + "ms (attempt " + attempt + ")");
+                Thread.sleep(delay);
+            }
+        }
+    }
+
+    /** One streamed request, start to finish. */
+    private String sendStreamedOnce(String url, PromptData promptData, float temperature,
+                                    int maxTokens, int timeout, InlineCacheMarker marker)
+            throws Exception {
+        Map<String, Object> body = buildBody(promptData, temperature, maxTokens, marker);
+        body.put("stream", Boolean.TRUE);
+        Map<String, Object> streamOptions = new LinkedHashMap<>();
+        streamOptions.put("include_usage", Boolean.TRUE);
+        body.put("stream_options", streamOptions);
+
+        HttpRequest request = requestFor(url, body, timeout);
+        LOG.info("Sending streamed request to OpenAI-compatible endpoint: " + url
+                 + " (model: " + modelName + ")");
+        CompletionStream.Result result = CompletionStream.send(
+                httpClient, request, providerId(), modelName, url, timeout,
+                responseDeadlineSeconds(), ThinkingView::liveDelta);
+
+        if (!result.eventStream) {
+            // The provider answered a stream request with a plain completion. The same structural
+            // checks the blocking send applies to a 200 hold here too -- a body carrying the
+            // provider's overload notice, or cut off mid-JSON, is a transport failure a retry
+            // can help, not a protocol error a retry cannot.
+            if (TransientPayload.isTransient(result.plainBody)) {
+                throw LLMTransportException.incompleteResponse(
+                        providerId(), modelName, url, TransientPayload.describe(result.plainBody));
+            }
+            return extractContent(result.plainBody, url);
+        }
+        return assembleStreamed(result, url);
+    }
+
+    /**
+     * Applies the streamed result's contract, which is {@link ChatCompletionContent}'s: content
+     * wins whenever it carries text, and the reasoning field is read only when it does not, the
+     * unfinished-thought case a too-small output budget produces. The reasoning beside a reply is
+     * filed for the view, which shows it once -- the live stream having already shown it while it
+     * was being thought.
+     */
+    private String assembleStreamed(CompletionStream.Result result, String url) {
+        String content   = result.content;
+        String reasoning = result.reasoning;
+        if (content == null || content.isEmpty()) {
+            if (reasoning == null || reasoning.isEmpty()) {
+                throw new LLMProtocolException(providerId(), modelName, url,
+                                               "no completion content in stream");
+            }
+            return reasoning;
+        }
+        if (reasoning != null && !reasoning.isBlank() && !reasoning.equals(content)) {
+            ThinkingView.reported(reasoning);
+        }
+        return content;
+    }
+
+    /**
+     * Whether a bad-request reply says the stream itself was the problem, rather than the prompt
+     * or a cache marker. Matched on wording, the way {@code PromptCachePolicy} matches a cache
+     * rejection, because no provider names a status code for it.
+     */
+    private static boolean looksLikeStreamRejection(String message) {
+        if (message == null) {
+            return false;
+        }
+        String said = message.toLowerCase();
+        if (said.contains("stream_options")) {
+            return true;
+        }
+        return said.contains("stream") && (said.contains("not support") || said.contains("unsupported")
+                || said.contains("unknown") || said.contains("invalid")
+                || said.contains("unrecognized") || said.contains("unrecognised"));
     }
 
     /**
@@ -178,19 +315,31 @@ public class OpenAICompatibleBackend extends AbstractLLMBackend {
     private HttpResponse<String> send(String url, PromptData promptData, float temperature,
                                       int maxTokens, int timeout, InlineCacheMarker marker)
             throws Exception {
-        String json = MAPPER.writeValueAsString(buildBody(promptData, temperature, maxTokens, marker));
+        Map<String, Object> body = buildBody(promptData, temperature, maxTokens, marker);
+        HttpRequest request = requestFor(url, body, timeout);
+
+        LOG.info("Sending request to OpenAI-compatible endpoint: " + url + " (model: " + modelName + ")");
+        return sendWithRetry(request);
+    }
+
+    /**
+     * Builds one request with this backend's authentication and headers, ready to send.
+     *
+     * <p>Shared by the blocking and the streamed send, so a streamed request authenticates and
+     * identifies itself exactly as the plain one does -- the gateway session headers included.</p>
+     */
+    private HttpRequest requestFor(String url, Map<String, Object> body, int timeoutSeconds)
+            throws Exception {
+        String json = MAPPER.writeValueAsString(body);
 
         HttpRequest.Builder builder = HttpRequests.to(URI.create(url))
-                .timeout(Duration.ofSeconds(timeout))
+                .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Content-Type", "application/json");
         applyAuth(builder);
         for (Map.Entry<String, String> h : extraHeaders.entrySet()) {
             builder.header(h.getKey(), h.getValue());
         }
-        HttpRequest request = builder.POST(HttpRequest.BodyPublishers.ofString(json)).build();
-
-        LOG.info("Sending request to OpenAI-compatible endpoint: " + url + " (model: " + modelName + ")");
-        return sendWithRetry(request);
+        return builder.POST(HttpRequest.BodyPublishers.ofString(json)).build();
     }
 
     /**

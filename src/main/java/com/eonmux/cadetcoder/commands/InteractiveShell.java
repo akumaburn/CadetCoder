@@ -331,6 +331,13 @@ public class InteractiveShell implements InputHandler {
                                                                       "TUI session ending"));
             cleanUp("restore the console", () -> OutputRouter.getInstance().stopRouting());
             cleanUp("save the session", sessionManager::saveSession);
+            // Said after the console is back, so it outlives the alternate screen: the session id
+            // is what a later 'session resume' needs, and a message drawn inside a TUI that is
+            // about to close is a message nobody can read afterwards.
+            cleanUp("name the session", () -> OutputFormatter.printInfo(
+                    "Session " + sessionManager.getCurrentSessionId()
+                    + " is kept. Open it again with 'session resume "
+                    + sessionManager.getCurrentSessionId() + "'."));
             cleanUp("log session cleanup",
                     () -> SessionLogger.getInstance().logSessionEvent("InteractiveShell",
                                                                       "Session cleanup completed"));

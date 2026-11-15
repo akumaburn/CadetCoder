@@ -320,7 +320,21 @@ public class AIManager {
                 // ... <|im_end|>, [INST], <s>). Done here, at the single point every caller funnels
                 // through, so the parsing engine, the chat/agent harness, and the session history all
                 // see clean text instead of executing a token-wrapped blob as a bogus command.
-                response = ResponseSanitizer.sanitize(asked.complete(request, settings));
+                //
+                // The live span around the call is what fills the silent minutes a reasoning model
+                // used to take: its thinking streams to the display as it is thought, on the
+                // recorded path only, exactly where the finished thought is rendered at the end.
+                boolean recorded = !Boolean.TRUE.equals(HISTORY_RECORDING_SUPPRESSED.get());
+                if (recorded) {
+                    ThinkingView.liveBegin();
+                }
+                try {
+                    response = ResponseSanitizer.sanitize(asked.complete(request, settings));
+                } finally {
+                    if (recorded) {
+                        ThinkingView.liveEnd();
+                    }
+                }
 
                 // A failure reported by a legacy backend that RETURNS "Error: ..." rather than
                 // throwing. Anchored to that sentinel: a completion's text is arbitrary, and
