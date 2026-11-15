@@ -145,7 +145,65 @@ public class ThemedOutputFormatter {
             out.append('\n');
             appendWrapped(out, continuation, lines[i], width);
         }
-        return colorize(out.toString(), type);
+        return paintPanel(colorize(out.toString(), type), type);
+    }
+
+    /**
+     * Paints a rendered marked block with its theme's background, so the line reads as an area of
+     * the console in the model of the opencode theme.
+     *
+     * <p>Which kind is painted how: a header and an iteration banner are section boundaries, and
+     * each is padded across the terminal on the strong surface so the boundary stays visible while
+     * scrolling; a subheader is a step inside a section, and is padded across the terminal on the
+     * softer surface, the strip a tool call gets in opencode; a success, warning or error notice is
+     * set on a dark tint of its own semantic hue, hugging its own text, because it is a remark in
+     * the flow of output rather than a boundary in it. Every other kind -- prose notices, program
+     * output, a model's answer -- keeps the terminal's own background: painting them would repaint
+     * whole listings the tool did not draw.</p>
+     *
+     * <p>Gated exactly like {@link #colorize}: colour off, or the interactive shell rendering
+     * (where the shell classifies the line and paints through {@link OutputLineStyler} instead),
+     * and nothing is painted. A theme without backgrounds -- the 16-colour ones, whose colours
+     * are defined against whatever palette the terminal itself uses -- paints nothing either.</p>
+     *
+     * @param rendered the colourised block
+     * @param type     the colour role it was rendered as
+     * @return the block, with its background applied when the theme declares one
+     */
+    private static String paintPanel(String rendered, ColorTheme.ColorType type) {
+        if (!isColorEnabled() || TuiMode.isActive() || rendered == null || rendered.isEmpty()) {
+            return rendered;
+        }
+        ColorTheme theme = ColorThemeManager.getCurrentTheme();
+        if (theme == null) {
+            return rendered;
+        }
+
+        String  background;
+        boolean fullWidth;
+        switch (type) {
+            case HEADER:
+            case SUBHEADER:
+                background = type == ColorTheme.ColorType.HEADER
+                         ? theme.getSurfaceStrongBg() : theme.getSurfaceBg();
+                fullWidth  = true;
+                break;
+            case SUCCESS:
+                background = theme.getSuccessBg();
+                fullWidth  = false;
+                break;
+            case WARNING:
+                background = theme.getWarningBg();
+                fullWidth  = false;
+                break;
+            case ERROR:
+                background = theme.getErrorBg();
+                fullWidth  = false;
+                break;
+            default:
+                return rendered;
+        }
+        return ThemePanels.paint(rendered, background, fullWidth, TerminalWidth.columns());
     }
 
     /**

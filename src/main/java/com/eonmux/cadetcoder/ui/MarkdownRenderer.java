@@ -59,7 +59,10 @@ public final class MarkdownRenderer {
         this.h1          = nn(theme == null ? null : theme.getAccent1()).bold();
         this.h2          = nn(theme == null ? null : theme.getAccent2()).bold();
         this.h3          = nn(theme == null ? null : theme.getInfo()).bold();
-        this.codeStyle   = nn(theme == null ? null : theme.getString());
+        // A fenced block sits on the raised surface, the way opencode sets its code blocks on a
+        // panel one step above the background: the block's extent is visible without a rule or a
+        // gutter, and nothing has to be cleaned out of the code when it is copied.
+        this.codeStyle   = panelCode(theme);
         this.inlineCode  = nn(theme == null ? null : theme.getString());
         this.linkStyle   = nn(theme == null ? null : theme.getAccent2()).underlined();
         this.dim         = nn(theme == null ? null : theme.getDim());
@@ -632,5 +635,17 @@ public final class MarkdownRenderer {
 
     private static Style nn(Style s) {
         return s == null ? Style.EMPTY : s;
+    }
+
+    /**
+     * The fenced-code style: the code colour on the raised surface when the theme declares one,
+     * the code colour alone otherwise.
+     */
+    private static Style panelCode(TuiTheme theme) {
+        if (theme == null) {
+            return Style.EMPTY;
+        }
+        Style base = nn(theme.getString());
+        return theme.getSurface() == null ? base : base.bg(theme.getSurface());
     }
 }

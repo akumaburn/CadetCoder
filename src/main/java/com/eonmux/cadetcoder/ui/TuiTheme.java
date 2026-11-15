@@ -59,6 +59,20 @@ public class TuiTheme {
     private final Style label;
     private final Style status;
 
+    // Raised surfaces and semantic tints -- BACKGROUND colours, not text styles.
+    //
+    // The model is the opencode theme's: areas of the console are separated by painting their
+    // background one small step away from the base (a "raised" surface), and a notice is painted
+    // with a dark, desaturated wash of its own semantic hue, the accent staying in the text on
+    // top. Surfaces hold banners, step strips and the user's own lines; tints hold success,
+    // warning and error notices. They are composed onto an element's style where the element is
+    // rendered, which is why they are colours rather than styles.
+    private final Color surface;
+    private final Color surfaceStrong;
+    private final Color successBg;
+    private final Color warningBg;
+    private final Color errorBg;
+
     public TuiTheme(String name, String description,
                     Style windowBackground, Style windowBorder, Style windowTitle,
                     Style textNormal, Style textActive, Style textSelected, Style textHighlight,
@@ -67,7 +81,9 @@ public class TuiTheme {
                     Style command, Style path, Style string,
                     Style accent1, Style accent2, Style dim, Style bold,
                     Style menuText, Style menuHighlighted, Style menuMnemonic, Style menuDisabled,
-                    Style label, Style status) {
+                    Style label, Style status,
+                    Color surface, Color surfaceStrong,
+                    Color successBg, Color warningBg, Color errorBg) {
 
         this.name = name;
         this.description = description;
@@ -98,6 +114,11 @@ public class TuiTheme {
         this.menuDisabled = menuDisabled;
         this.label = label;
         this.status = status;
+        this.surface = surface;
+        this.surfaceStrong = surfaceStrong;
+        this.successBg = successBg;
+        this.warningBg = warningBg;
+        this.errorBg = errorBg;
     }
 
     // Getters
@@ -144,6 +165,14 @@ public class TuiTheme {
     // Status and labels
     public Style getLabel() { return label; }
     public Style getStatus() { return status; }
+
+    // Raised surfaces and semantic tints (background colours; may be null for a theme that
+    // declares none, in which case nothing is painted behind the element)
+    public Color getSurface()       { return surface; }
+    public Color getSurfaceStrong() { return surfaceStrong; }
+    public Color getSuccessBg()     { return successBg; }
+    public Color getWarningBg()     { return warningBg; }
+    public Color getErrorBg()       { return errorBg; }
 
     /**
      * Build a TamboUI {@link Style} from a foreground/background colour pair and the

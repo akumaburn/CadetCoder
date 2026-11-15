@@ -26,7 +26,8 @@ import java.util.*;
  *   success, warning, error, info, command, path, string,
  *   accent1, accent2, dim, bold,
  *   menuText, menuHighlighted, menuMnemonic, menuDisabled,
- *   label, status
+ *   label, status,
+ *   surface, surfaceStrong, successBg, warningBg, errorBg   (background COLOURS)
  * </pre>
  */
 public class TuiThemeManager {
@@ -146,6 +147,15 @@ public class TuiThemeManager {
                 theme.getError() == null || theme.getInfo() == null) {
                 issues.add("Theme '" + themeName + "' missing essential message colors");
             }
+
+            // Areas of the console are separated by painted backgrounds; a theme without them
+            // renders every banner and notice as bare text, so their absence is a defect like a
+            // missing message colour, not an optional extra.
+            if (theme.getSurface() == null || theme.getSurfaceStrong() == null ||
+                theme.getSuccessBg() == null || theme.getWarningBg() == null ||
+                theme.getErrorBg() == null) {
+                issues.add("Theme '" + themeName + "' missing surface or tint backgrounds");
+            }
         }
 
         return issues;
@@ -250,7 +260,14 @@ public class TuiThemeManager {
 
             // Status and labels (label, status)
             TuiTheme.style(Color.hex(ThemePalettes.Modern.TEXT), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Modern.TEXT), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Modern.TEXT), Color.hex(bg), false, false, false, false, false),
+
+            // Raised surfaces and semantic tints (surface, surfaceStrong, successBg, warningBg, errorBg)
+            Color.hex(ThemePalettes.Modern.SURFACE_BG),
+            Color.hex(ThemePalettes.Modern.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Modern.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Modern.TINT_WARNING),
+            Color.hex(ThemePalettes.Modern.TINT_ERROR)
         );
 
         themes.put("modern", theme);
@@ -304,7 +321,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.Matrix.NORMAL), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Matrix.NORMAL), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Matrix.NORMAL), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.Matrix.SURFACE_BG),
+            Color.hex(ThemePalettes.Matrix.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Matrix.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Matrix.TINT_WARNING),
+            Color.hex(ThemePalettes.Matrix.TINT_ERROR)
         );
 
         themes.put("matrix", theme);
@@ -360,7 +383,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.Default.TEXT), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Default.TEXT), Color.hex(panel), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Default.TEXT), Color.hex(panel), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.Default.SURFACE_BG),
+            Color.hex(ThemePalettes.Default.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Default.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Default.TINT_WARNING),
+            Color.hex(ThemePalettes.Default.TINT_ERROR)
         );
 
         themes.put("default", theme);
@@ -414,7 +443,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.SolarizedDark.BASE0), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.SolarizedDark.BASE0), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.SolarizedDark.BASE0), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.SolarizedDark.SURFACE_BG),
+            Color.hex(ThemePalettes.SolarizedDark.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.SolarizedDark.TINT_SUCCESS),
+            Color.hex(ThemePalettes.SolarizedDark.TINT_WARNING),
+            Color.hex(ThemePalettes.SolarizedDark.TINT_ERROR)
         );
 
         themes.put("solarized-dark", theme);
@@ -468,7 +503,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.SolarizedLight.BASE00), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.SolarizedLight.BASE00), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.SolarizedLight.BASE00), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.SolarizedLight.SURFACE_BG),
+            Color.hex(ThemePalettes.SolarizedLight.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.SolarizedLight.TINT_SUCCESS),
+            Color.hex(ThemePalettes.SolarizedLight.TINT_WARNING),
+            Color.hex(ThemePalettes.SolarizedLight.TINT_ERROR)
         );
 
         themes.put("solarized-light", theme);
@@ -522,7 +563,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.Monokai.TEXT), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Monokai.TEXT), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Monokai.TEXT), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.Monokai.SURFACE_BG),
+            Color.hex(ThemePalettes.Monokai.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Monokai.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Monokai.TINT_WARNING),
+            Color.hex(ThemePalettes.Monokai.TINT_ERROR)
         );
 
         themes.put("monokai", theme);
@@ -576,7 +623,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.Nord.SNOW0), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Nord.SNOW0), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Nord.SNOW0), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.Nord.SURFACE_BG),
+            Color.hex(ThemePalettes.Nord.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Nord.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Nord.TINT_WARNING),
+            Color.hex(ThemePalettes.Nord.TINT_ERROR)
         );
 
         themes.put("nord", theme);
@@ -630,7 +683,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.Dracula.TEXT), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.Dracula.TEXT), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.Dracula.TEXT), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.Dracula.SURFACE_BG),
+            Color.hex(ThemePalettes.Dracula.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.Dracula.TINT_SUCCESS),
+            Color.hex(ThemePalettes.Dracula.TINT_WARNING),
+            Color.hex(ThemePalettes.Dracula.TINT_ERROR)
         );
 
         themes.put("dracula", theme);
@@ -684,7 +743,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.GruvboxDark.FG), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.GruvboxDark.FG), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.GruvboxDark.FG), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.GruvboxDark.SURFACE_BG),
+            Color.hex(ThemePalettes.GruvboxDark.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.GruvboxDark.TINT_SUCCESS),
+            Color.hex(ThemePalettes.GruvboxDark.TINT_WARNING),
+            Color.hex(ThemePalettes.GruvboxDark.TINT_ERROR)
         );
 
         themes.put("gruvbox-dark", theme);
@@ -738,7 +803,13 @@ public class TuiThemeManager {
 
             // Status and labels
             TuiTheme.style(Color.hex(ThemePalettes.OneDark.TEXT), Color.hex(bg), false, false, false, false, false),
-            TuiTheme.style(Color.hex(ThemePalettes.OneDark.TEXT), Color.hex(bg), false, false, false, false, false)
+            TuiTheme.style(Color.hex(ThemePalettes.OneDark.TEXT), Color.hex(bg), false, false, false, false, false),
+
+            Color.hex(ThemePalettes.OneDark.SURFACE_BG),
+            Color.hex(ThemePalettes.OneDark.SURFACE_STRONG_BG),
+            Color.hex(ThemePalettes.OneDark.TINT_SUCCESS),
+            Color.hex(ThemePalettes.OneDark.TINT_WARNING),
+            Color.hex(ThemePalettes.OneDark.TINT_ERROR)
         );
 
         themes.put("one-dark", theme);

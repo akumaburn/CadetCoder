@@ -26,11 +26,35 @@ public class ColorTheme {
     private final String accent2;  // For secondary highlights
     private final String dim;      // For less important text
 
+    // BACKGROUND escapes, in the model of the opencode theme: banners and step strips sit on a
+    // raised surface one step away from the base, and a notice sits on a dark tint of its own
+    // semantic hue with the accent carried by the text on top. A null background means the theme
+    // does not paint that kind of line at all -- the 16-colour themes define their colours against
+    // whatever palette the terminal itself uses, so inventing backgrounds for them is exactly how
+    // a low-contrast or garish combination gets made. Only truecolour themes paint.
+    private final String surfaceBg;
+    private final String surfaceStrongBg;
+    private final String successBg;
+    private final String warningBg;
+    private final String errorBg;
+
     public ColorTheme(String name, String description,
                       String header, String subheader, String success,
                       String warning, String error, String info,
                       String command, String string, String path,
                       String accent1, String accent2, String dim) {
+        this(name, description, header, subheader, success, warning, error, info,
+             command, string, path, accent1, accent2, dim,
+             null, null, null, null, null);
+    }
+
+    public ColorTheme(String name, String description,
+                      String header, String subheader, String success,
+                      String warning, String error, String info,
+                      String command, String string, String path,
+                      String accent1, String accent2, String dim,
+                      String surfaceBg, String surfaceStrongBg,
+                      String successBg, String warningBg, String errorBg) {
         this.name        = name;
         this.description = description;
         this.header      = header;
@@ -47,6 +71,11 @@ public class ColorTheme {
         this.dim         = dim;
         this.reset       = "\u001B[0m";
         this.bold        = "\u001B[1m";
+        this.surfaceBg       = surfaceBg;
+        this.surfaceStrongBg = surfaceStrongBg;
+        this.successBg       = successBg;
+        this.warningBg       = warningBg;
+        this.errorBg         = errorBg;
     }
 
     // Getters
@@ -113,6 +142,13 @@ public class ColorTheme {
     public String getBold() {
         return bold;
     }
+
+    // Background escapes; null when this theme does not paint that kind of line
+    public String getSurfaceBg()       { return surfaceBg; }
+    public String getSurfaceStrongBg() { return surfaceStrongBg; }
+    public String getSuccessBg()       { return successBg; }
+    public String getWarningBg()       { return warningBg; }
+    public String getErrorBg()         { return errorBg; }
 
     /**
      * Apply color to text based on type

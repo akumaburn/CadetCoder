@@ -515,12 +515,19 @@ public class ThemedOutputFormatterTest {
         ThemedOutputFormatter.printWarning("first line\nsecond line\nthird line");
 
         // ANSI-stripped: this class runs with colour enabled, so each line carries escape codes
-        // around the marker -- which is also why classify() strips before matching.
+        // around the marker -- which is also why classify() strips before matching. A notice is
+        // painted as a chip (see paintPanel), so every line is padded to the block's common
+        // extent: same length, same rectangle, continuation lines still at their indent.
         String[] lines = AnsiStripper.strip(outputCapture.getStdout()).split("\\R");
         String marker  = Glyphs.system().warningMarker();
-        assertThat(lines[0]).isEqualTo(marker + " first line");
-        assertThat(lines[1]).isEqualTo(" ".repeat(marker.length() + 1) + "second line");
-        assertThat(lines[2]).isEqualTo(" ".repeat(marker.length() + 1) + "third line");
+        assertThat(lines[0]).startsWith(marker + " first line");
+        assertThat(lines[1]).startsWith(" ".repeat(marker.length() + 1) + "second line");
+        assertThat(lines[2]).startsWith(" ".repeat(marker.length() + 1) + "third line");
+        assertThat(lines[0].length()).isEqualTo(lines[1].length()).isEqualTo(lines[2].length());
+        // The chip hugs its own text: two columns of painted space beyond the widest line.
+        int widestText = Math.max(lines[0].stripTrailing().length(),
+                          Math.max(lines[1].stripTrailing().length(), lines[2].stripTrailing().length()));
+        assertThat(lines[0].length()).isLessThanOrEqualTo(widestText + 2);
     }
 
     @Test

@@ -124,27 +124,38 @@ public final class OutputLineStyler {
         return Kind.NORMAL;
     }
 
-    /** Map a {@link Kind} to a theme {@link Style}; falls back to {@link Style#EMPTY} when no theme. */
+    /**
+     * Map a {@link Kind} to a theme {@link Style}; falls back to {@link Style#EMPTY} when no theme.
+     *
+     * <p>Structural and semantic lines are painted with a background in the model of the opencode
+     * theme: a banner or a step strip sits on a raised surface (a neutral one step away from the
+     * theme's base), the user's own line sits on the softer surface as their message block does in
+     * opencode, and a notice sits on a dark tint of its own semantic hue with the accent carried by
+     * the text on top. Ordinary text, program output, prose notices and code fences keep the
+     * terminal's own background -- painting them would repaint whole listings the tool did not
+     * draw.</p>
+     */
     public static Style styleFor(Kind kind, TuiTheme theme) {
         if (theme == null) {
             return Style.EMPTY;
         }
         switch (kind) {
             case USER:
-                return theme.getCommand();
+                return withBackground(theme.getCommand(), theme.getSurface());
             case ERROR:
-                return theme.getError();
+                return withBackground(theme.getError(), theme.getErrorBg());
             case WARNING:
-                return theme.getWarning();
+                return withBackground(theme.getWarning(), theme.getWarningBg());
             case SUCCESS:
-                return theme.getSuccess();
+                return withBackground(theme.getSuccess(), theme.getSuccessBg());
             case INFO:
                 return theme.getInfo();
             case HEADER:
-                return theme.getAccent1();
+                return withBackground(theme.getAccent1(), theme.getSurfaceStrong());
             case SUBHEADER:
+                return withBackground(theme.getAccent2(), theme.getSurface());
             case ITERATION:
-                return theme.getAccent2();
+                return withBackground(theme.getAccent2(), theme.getSurfaceStrong());
             case SYSTEM:
                 return theme.getDim();
             case CODE:
@@ -153,6 +164,11 @@ public final class OutputLineStyler {
             default:
                 return theme.getTextNormal();
         }
+    }
+
+    /** A style with a background added; the base style stands when there is no background. */
+    private static Style withBackground(Style base, dev.tamboui.style.Color background) {
+        return background == null || base == null ? base : base.bg(background);
     }
 
     /** Convenience: classify {@code line} and return its style under {@code theme}. */

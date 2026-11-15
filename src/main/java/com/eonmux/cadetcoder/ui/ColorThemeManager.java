@@ -46,6 +46,18 @@ public class ColorThemeManager {
         return "\u001B[38;2;" + r + ";" + g + ";" + b + "m";
     }
 
+    /**
+     * Build a 24-bit truecolor background SGR escape ({@code ESC[48;2;R;G;Bm}) from an
+     * {@code "#RRGGBB"} hex string. The background counterpart of {@link #fg}.
+     */
+    private static String bg(String hex) {
+        int rgb = Integer.parseInt(hex.substring(1), 16);
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        return "\u001B[48;2;" + r + ";" + g + ";" + b + "m";
+    }
+
     static {
         // Initialize predefined themes
         createMatrixTheme();
@@ -64,7 +76,9 @@ public class ColorThemeManager {
 
     private static void createModernTheme() {
         // Modern dark theme (graphite background + calm teal/blue accent), expressed
-        // in authentic 24-bit truecolor to match the TUI 'modern' theme.
+        // in authentic 24-bit truecolor to match the TUI 'modern' theme. It is the only theme
+        // that paints backgrounds: the surfaces and tints are truecolour, and a theme defined in
+        // 16-colour terms cannot name one safely (see ColorTheme's background fields).
         themes.put("modern", new ColorTheme(
                 "modern",
                 "Modern dark theme with a graphite background and a calm accent",
@@ -79,7 +93,12 @@ public class ColorThemeManager {
                 fg("#56b6c2"),  // path    - teal
                 fg("#56b6c2"),  // accent1 - teal (primary)
                 fg("#61afef"),  // accent2 - blue (secondary)
-                fg("#5c6370")   // dim     - muted comment grey
+                fg("#5c6370"),  // dim     - muted comment grey
+                bg("#232833"),  // surface       - raised surface for step strips
+                bg("#2b303b"),  // surface strong - the banner layer
+                bg("#243019"),  // success tint  - dark moss under the green
+                bg("#332a14"),  // warning tint  - dark amber under the amber
+                bg("#37222c")   // error tint    - dark red under the red
         ));
     }
 

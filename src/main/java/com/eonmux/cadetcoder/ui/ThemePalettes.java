@@ -35,6 +35,16 @@ final class ThemePalettes {
         static final String PATH        = "#56b6c2";
         static final String STRING      = "#e5c07b";
         static final String DIM         = "#5c6370"; // comment / muted
+
+        // Raised surfaces and semantic tints, in the model of the opencode theme: a surface is
+        // one small luminance step above the background, and a tint is a dark, desaturated wash
+        // of the semantic hue with the accent carried by the TEXT on top of it -- never by a
+        // bright background.
+        static final String SURFACE_BG        = "#232833"; // raised surface (step strips)
+        static final String SURFACE_STRONG_BG = "#2b303b"; // the surface constant itself: banners
+        static final String TINT_SUCCESS      = "#243019"; // dark moss under the green
+        static final String TINT_WARNING      = "#332a14"; // dark amber under the amber
+        static final String TINT_ERROR        = "#37222c"; // dark red under the red
     }
 
     /** Matrix — layered greens on near-black. */
@@ -52,6 +62,14 @@ final class ThemePalettes {
         static final String ERROR       = "#ff5f5f";
         static final String INFO        = "#2fffb0";
         static final String SELECTION   = "#00b341"; // selection uses the normal green
+
+        // Raised surfaces and tints: green-on-black has its own ramp, so the surfaces step up
+        // through near-black greens and the tints are the same greens at a much lower luminance.
+        static final String SURFACE_BG        = "#131b13";
+        static final String SURFACE_STRONG_BG = "#1c271c";
+        static final String TINT_SUCCESS      = "#0e2c11";
+        static final String TINT_WARNING      = "#26340f";
+        static final String TINT_ERROR        = "#3a1414";
     }
 
     /** Solarized Dark (Ethan Schoonover). */
@@ -71,6 +89,14 @@ final class ThemePalettes {
         static final String BLUE    = "#268bd2";
         static final String CYAN    = "#2aa198";
         static final String GREEN   = "#859900";
+
+        // BASE02 is Solarized's own background-highlight; the strong surface is one step above
+        // it, and the tints are the accent hues at Solarized's low saturation.
+        static final String SURFACE_BG        = "#073642"; // BASE02
+        static final String SURFACE_STRONG_BG = "#0b4553";
+        static final String TINT_SUCCESS      = "#1e3308";
+        static final String TINT_WARNING      = "#39300c";
+        static final String TINT_ERROR        = "#3e1412";
     }
 
     /** Solarized Light (Ethan Schoonover). */
@@ -90,6 +116,14 @@ final class ThemePalettes {
         static final String BLUE    = "#268bd2";
         static final String CYAN    = "#2aa198";
         static final String GREEN   = "#859900";
+
+        // A light theme lowers the surface below the background instead of raising it, and the
+        // tints are pastels of the accent hues -- darker than the cream, never brighter.
+        static final String SURFACE_BG        = "#eee8d5"; // BASE2
+        static final String SURFACE_STRONG_BG = "#e3dac1";
+        static final String TINT_SUCCESS      = "#dce8c2";
+        static final String TINT_WARNING      = "#f0e2ba";
+        static final String TINT_ERROR        = "#f2ceca";
     }
 
     /** Monokai (Wimer Hazenberg). */
@@ -105,6 +139,14 @@ final class ThemePalettes {
         static final String BLUE    = "#66d9ef"; // info / type
         static final String PURPLE  = "#ae81ff"; // command / constants
         static final String SELECTION = "#49483e"; // selection background
+
+        // Surfaces step up from the background toward the selection colour; tints follow the
+        // accent hues down to a low luminance.
+        static final String SURFACE_BG        = "#32332b";
+        static final String SURFACE_STRONG_BG = "#3b3b33";
+        static final String TINT_SUCCESS      = "#2d3a16";
+        static final String TINT_WARNING      = "#3c2d10";
+        static final String TINT_ERROR        = "#3d1c2a";
     }
 
     /** Nord (Arctic Ice Studio). */
@@ -130,6 +172,14 @@ final class ThemePalettes {
         static final String YELLOW  = "#ebcb8b"; // string
         static final String GREEN   = "#a3be8c"; // success
         static final String PURPLE  = "#b48ead"; // command
+
+        // Polar Night provides the surfaces: the ramp between NIGHT0 and NIGHT1 is Nord's own
+        // raised layer. Tints sit inside the same ramp's hue family.
+        static final String SURFACE_BG        = "#353d4d";
+        static final String SURFACE_STRONG_BG = "#3b4252"; // NIGHT1
+        static final String TINT_SUCCESS      = "#2e3a2c";
+        static final String TINT_WARNING      = "#3a2e28";
+        static final String TINT_ERROR        = "#382a30";
     }
 
     /** Dracula (Zeno Rocha). */
@@ -146,6 +196,14 @@ final class ThemePalettes {
         static final String PURPLE      = "#bd93f9"; // accent
         static final String RED         = "#ff5555"; // error
         static final String YELLOW      = "#f1fa8c"; // string
+
+        // The current-line colour is Dracula's own raised layer; the strong surface sits between
+        // it and the selection. Tints are the accent hues at Dracula's low background luminance.
+        static final String SURFACE_BG        = "#313441";
+        static final String SURFACE_STRONG_BG = "#3a3d4b";
+        static final String TINT_SUCCESS      = "#1e3a28";
+        static final String TINT_WARNING      = "#3a2f1e";
+        static final String TINT_ERROR        = "#3d2126";
     }
 
     /** Gruvbox Dark (Pavel Pertsev). */
@@ -163,6 +221,13 @@ final class ThemePalettes {
         static final String PURPLE  = "#d3869b"; // command
         static final String AQUA    = "#8ec07c"; // path
         static final String ORANGE  = "#fe8019"; // accent
+
+        // bg1 is Gruvbox's own surface; the tints are the accent hues darkened into it.
+        static final String SURFACE_BG        = "#32302e";
+        static final String SURFACE_STRONG_BG = "#3c3836"; // BG_SOFT
+        static final String TINT_SUCCESS      = "#34371b";
+        static final String TINT_WARNING      = "#3d341a";
+        static final String TINT_ERROR        = "#3f1e19";
     }
 
     /** One Dark (Atom). */
@@ -179,6 +244,14 @@ final class ThemePalettes {
         static final String BLUE    = "#61afef"; // info
         static final String MAGENTA = "#c678dd"; // command
         static final String CYAN    = "#56b6c2"; // accent
+
+        // Surfaces climb from the background toward the selection colour; the tints follow the
+        // accent hues down to One Dark's own low background luminance.
+        static final String SURFACE_BG        = "#2e333d";
+        static final String SURFACE_STRONG_BG = "#353b45";
+        static final String TINT_SUCCESS      = "#243019";
+        static final String TINT_WARNING      = "#332b18";
+        static final String TINT_ERROR        = "#37222c";
     }
 
     /** Default — a clean modern truecolor blue (Turbo Vision-inspired). */
@@ -199,5 +272,13 @@ final class ThemePalettes {
         static final String PATH      = "#a3d977";
         static final String STRING    = "#ffd866";
         static final String DIM       = "#7a8290"; // muted
+
+        // The surface constant is the strong banner layer; the raised surface sits just above the
+        // window background. Tints follow the semantic hues down into the deep slate.
+        static final String SURFACE_BG        = "#262d3b";
+        static final String SURFACE_STRONG_BG = "#2a3142"; // SURFACE
+        static final String TINT_SUCCESS      = "#26341c";
+        static final String TINT_WARNING      = "#3a3014";
+        static final String TINT_ERROR        = "#3d2020";
     }
 }
