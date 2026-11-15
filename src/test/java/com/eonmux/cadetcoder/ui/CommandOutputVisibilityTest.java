@@ -148,6 +148,29 @@ public class CommandOutputVisibilityTest {
                 .doesNotContain("\n");
     }
 
+    /**
+     * The defect this was written for: a write's arguments are the file it is writing, and the
+     * announcement carried all of it -- a 2,000-character README dumped into the step line, the
+     * record line and the activity bar of every run that touched it.
+     */
+    @Test
+    public void contentSizedArgumentsAreCutWithTheOmittedSizeCounted() {
+        String content = "TIDELINE line.\n".repeat(300); // 4,200 characters of file
+
+        String described = CommandOutputVisibility.describe("write", "README.md " + content);
+
+        assertThat(described).startsWith("write README.md TIDELINE line.");
+        assertThat(described).contains("… +");
+        assertThat(described).contains("chars");
+        assertThat(described).doesNotContain("\n");
+        // The cut is bounded: the line is a record, not the thing that ran.
+        assertThat(described.length()).isLessThan(CommandOutputVisibility.MAX_ARGUMENTS_CHARS + 40);
+        // The count names the whole content, not just the collapsed remainder; the code counts
+        // against the stripped arguments, a trailing newline being no content.
+        int raw = ("README.md " + content).strip().length();
+        assertThat(described).contains(String.format("%,d", raw - CommandOutputVisibility.MAX_ARGUMENTS_CHARS));
+    }
+
     @Test
     public void aLongCommandIsDescribedToItsLastArgument() {
         String command = "cd /home/user/project && python backtest.py --strategy CustomStrategy"

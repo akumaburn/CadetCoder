@@ -452,7 +452,10 @@ public final class ActionLoopGuard {
                 }
             }
         }
-        return text.toString();
+        // Cut by the same rule as every other display line. The label rides in the messages that
+        // tell the user a command has already run -- and a command that has already run three
+        // times was a write, whose label was the whole file, three times over.
+        return com.eonmux.cadetcoder.ui.CommandOutputVisibility.compactArguments(text.toString());
     }
 
     /** Renders a stored signature back into readable form for messages. */

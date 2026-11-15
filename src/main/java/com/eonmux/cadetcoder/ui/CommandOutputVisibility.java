@@ -147,9 +147,11 @@ public final class CommandOutputVisibility {
      * Renders {@code command args} as one line, with every argument.
      *
      * <p>Whitespace inside the arguments is collapsed, so an argument containing a newline cannot
-     * break the line it is placed on. Nothing is cut: the line is the record of what the model ran,
-     * and a command cut at seventy characters hid the flags that told one run from the next. The
-     * console wraps a long line, and the one-row bars fit it to their own width.</p>
+     * break the line it is placed on. Ordinary commands are described to their last argument -- a
+     * command cut at seventy characters hid the flags that told one run from the next -- while
+     * arguments that are the content itself, a write's whole file above all, are cut at
+     * {@link #MAX_ARGUMENTS_CHARS} with the omitted size counted; see {@link #compactArguments}.
+     * The console wraps a long line, and the one-row bars fit it to their own width.</p>
      *
      * @param command   the command name
      * @param arguments its arguments, already joined (may be {@code null} or blank)
@@ -161,9 +163,43 @@ public final class CommandOutputVisibility {
         return args.isEmpty() ? name : name + " " + args;
     }
 
-    /** Collapses whitespace in an argument string onto one line. */
-    static String compactArguments(String arguments) {
-        return arguments == null ? "" : arguments.strip().replaceAll("\\s+", " ");
+    /**
+     * How much of a command's arguments a display line carries.
+     *
+     * <p>Generous on purpose: every flag of a real command fits, and so do the multi-path
+     * arguments of a read across several files -- cutting one of those hid the part that differed
+     * from the last run, which is the harm a record exists to prevent. What the cap is for is a
+     * command whose arguments are the content itself -- a write or a multiedit carries a whole
+     * file -- and printing that into the announcement buried the run under the text it had just
+     * written. The line is a record of what ran, not the thing that ran; the content itself is in
+     * the file, the transcript and the session log.</p>
+     */
+    static final int MAX_ARGUMENTS_CHARS = 256;
+
+    /**
+     * Collapses whitespace in an argument string onto one line, and cuts content-sized arguments
+     * down to the cap with the omitted size counted.
+     *
+     * @param arguments the raw arguments, may be {@code null}
+     * @return the one-line form, never longer than {@link #MAX_ARGUMENTS_CHARS} plus the tail
+     */
+    public static String compactArguments(String arguments) {
+        if (arguments == null) {
+            return "";
+        }
+        String compact = arguments.strip().replaceAll("\\s+", " ");
+        if (compact.length() <= MAX_ARGUMENTS_CHARS) {
+            return compact;
+        }
+        // Counted against the raw arguments, not the collapsed ones: what the reader wants to know
+        // is how much content this step carried, and collapsing whitespace would understate it.
+        int omitted = arguments.strip().length() - MAX_ARGUMENTS_CHARS;
+        return compact.substring(0, MAX_ARGUMENTS_CHARS) + " … +" + grouped(omitted) + " chars";
+    }
+
+    /** A count with thousands separated, because these numbers are read, not calculated. */
+    private static String grouped(int n) {
+        return String.format("%,d", n);
     }
 
     /** Describes how much output a command produced, so an empty or huge result is still evident. */
